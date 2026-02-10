@@ -1,273 +1,151 @@
-import React, { useEffect, useRef } from 'react';
-import {
-  Animated,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import React from 'react';
+import { Pressable, SafeAreaView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { ThemedText } from '@/components/themed-text';
 import { router } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import { FontAwesome5 } from '@expo/vector-icons';
 
-// ─── Mode Card ───────────────────────────────────────────────────────────────
-function ModeCard({
-  icon,
-  title,
-  description,
-  accentColor,
-  tintBg,
-  tintBorder,
-  onPress,
-  delay = 0,
-}: {
-  icon: string;
-  title: string;
-  description: string;
-  accentColor: string;
-  tintBg: string;
-  tintBorder: string;
-  onPress: () => void;
-  delay?: number;
-}) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(24)).current;
-
-  useEffect(() => {
-    Animated.sequence([
-      Animated.delay(delay),
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
-      ]),
-    ]).start();
-  }, [delay, fadeAnim, slideAnim]);
-
-  return (
-    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.modeCard,
-          { borderColor: tintBorder },
-          pressed && styles.modeCardPressed,
-        ]}
-        onPress={onPress}
-      >
-        {/* Colored accent bar */}
-        <View style={[styles.modeAccent, { backgroundColor: accentColor }]} />
-
-        <View style={styles.modeBody}>
-          {/* Icon area */}
-          <View style={[styles.modeIconArea, { backgroundColor: tintBg }]}>
-            <ThemedText style={styles.modeIcon}>{icon}</ThemedText>
-          </View>
-
-          {/* Text content */}
-          <View style={styles.modeContent}>
-            <ThemedText style={[styles.modeTitle, { color: accentColor }]}>{title}</ThemedText>
-            <ThemedText style={styles.modeDescription}>{description}</ThemedText>
-          </View>
-
-          {/* Arrow */}
-          <View style={[styles.modeArrow, { backgroundColor: tintBg }]}>
-            <ThemedText style={[styles.modeArrowText, { color: accentColor }]}>
-              {'\u2192'}
-            </ThemedText>
-          </View>
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-// ─── Home Screen ─────────────────────────────────────────────────────────────
 export default function HomeScreen() {
-  const brandFade = useRef(new Animated.Value(0)).current;
-  const brandSlide = useRef(new Animated.Value(20)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(brandFade, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(brandSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
-    ]).start();
-  }, [brandFade, brandSlide]);
-
   return (
     <SafeAreaView style={styles.safeArea}>
-        <View style={styles.container}>
-          {/* ── Brand Section ── */}
-          <Animated.View
-            style={[
-              styles.brandSection,
-              { opacity: brandFade, transform: [{ translateY: brandSlide }] },
-            ]}
-          >
-            <Image
-              source={require('@/assets/images/OmniTalk_logo_nobg.png')}
-              style={styles.logo}
-              contentFit="contain"
-            />
-          </Animated.View>
+      <View style={styles.container}>
 
-          {/* ── Mode Selection ── */}
-          <View style={styles.modeSection}>
-            <ThemedText style={styles.sectionLabel}>Select a mode</ThemedText>
-
-            <ModeCard
-              icon={'\uD83C\uDF99\uFE0F'}
-              title="Speech to Text"
-              description="Live captions from speakers around you"
-              accentColor="#2563EB"
-              tintBg="#EFF6FF"
-              tintBorder="#BFDBFE"
-              onPress={() => router.navigate('/(tabs)/captions')}
-              delay={200}
-            />
-
-            <ModeCard
-              icon={'\uD83E\uDD1F'}
-              title="Sign to Speech"
-              description="Convert sign language to text and speech in real-time"
-              accentColor="#f7b715"
-              tintBg="#ECFDF5"
-              tintBorder="#ffdb3c"
-              onPress={() => router.navigate('/(tabs)/sign-language')}
-              delay={350}
-            />
-          </View>
+        {/* Greeting */}
+        <View style={styles.greetingArea}>
+          <ThemedText style={styles.appName}>Welcome to</ThemedText>
+          <ThemedText style={styles.appName}>OmniTalk</ThemedText>
+          <ThemedText style={styles.subtitle}>
+            Choose how you want to communicate
+          </ThemedText>
         </View>
+
+        {/* Mode cards */}
+        <View style={styles.cardsRow}>
+          <Pressable
+            style={({ pressed }) => [styles.card, styles.cardBlue, pressed && styles.cardPressed]}
+            onPress={() => router.navigate('/(tabs)/captions')}
+          >
+            <View style={styles.cardIconWrap}>
+              <MaterialIcons name="mic" size={32} color="#2563EB" />
+            </View>
+            <ThemedText style={styles.cardTitle}>Speech{'\n'}to Text</ThemedText>
+            <ThemedText style={styles.cardSub}>Live captions</ThemedText>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.card, styles.cardYellow, pressed && styles.cardPressed]}
+            onPress={() => router.navigate('/(tabs)/sign-language')}
+          >
+            <View style={styles.cardIconWrap}>
+              <FontAwesome5 name="sign-language" size={28} color="#D97706" />
+            </View>
+            <ThemedText style={styles.cardTitle}>Sign{'\n'}to Speech</ThemedText>
+            <ThemedText style={styles.cardSub}>Camera translate</ThemedText>
+          </Pressable>
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    paddingBottom: 40,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 28,
+    paddingTop: 30,
   },
 
-  // Brand
-  brandSection: {
+  // Logo
+  logoArea: {
     alignItems: 'center',
-    paddingTop: 38,
-    backgroundColor: '#FFFFFF',
+    paddingTop: 12,
+  },
+  logoClip: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    overflow: 'hidden',
   },
   logo: {
-    width: 250,
-    height: 250,
-  },
-  tagline: {
-    fontSize: 15,
-    color: '#64748B',
-    fontWeight: '500',
-    marginTop: 6,
+    width: 180,
+    height: 180,
   },
 
-  // Mode selection
-  modeSection: {
-    paddingHorizontal: 30,
-    paddingTop: 2,
+  // Greeting
+  greetingArea: {
+    paddingTop: 12,
+    paddingBottom: 32,
   },
-  sectionLabel: {
-    fontSize: 15,
-    fontWeight: '700',
+  greeting: {
+    fontSize: 16,
     color: '#94A3B8',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 16,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  appName: {
+    fontSize: 32,
+    fontWeight: '800',
+    lineHeight: 38, 
+    color: '#0F172A',
+    letterSpacing: -0.5,
+    marginTop: 2,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#94A3B8',
+    fontWeight: '400',
+    marginTop: 8,
+  },
 
-  },
-  modeCard: {
+  // Cards
+  cardsRow: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginBottom: 16,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  modeCardPressed: {
-    transform: [{ scale: 0.98 }],
-    shadowOpacity: 0.03,
-  },
-  modeAccent: {
-    width: 5,
-  },
-  modeBody: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
     gap: 16,
   },
-  modeIconArea: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modeIcon: {
-    fontSize: 28,
-  },
-  modeContent: {
+  card: {
     flex: 1,
+    borderRadius: 24,
+    padding: 22,
+    paddingTop: 28,
+    paddingBottom: 24,
+    minHeight: 180,
+    justifyContent: 'space-between',
   },
-  modeTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
+  cardBlue: {
+    backgroundColor: '#EFF6FF',
   },
-  modeDescription: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#64748B',
-    fontWeight: '400',
+  cardYellow: {
+    backgroundColor: '#FFF8E1',
   },
-  modeArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+  cardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+  },
+  cardIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  modeArrowText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-
-  // Footer
-  footer: {
-    alignItems: 'center',
-    paddingTop: 32,
-    paddingHorizontal: 40,
-  },
-  footerDivider: {
-    width: 40,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#E2E8F0',
     marginBottom: 16,
   },
-  footerText: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 26,
+  },
+  cardSub: {
+    fontSize: 13,
+    color: '#64748B',
     fontWeight: '500',
-    lineHeight: 20,
+    marginTop: 4,
   },
 });
