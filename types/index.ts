@@ -166,6 +166,10 @@ export interface TextToSpeechProps {
 export interface CameraCaptureProps {
   onFrame?: (imageData: ImageData | string) => void;
   onSignDetected?: (result: SignDetectionResult) => void;
+  onTextResult?: (result: SignToTextResult) => void;
   onError?: (error: Error) => void;
   isActive?: boolean;
+  signLanguage?: "ASL" | "BSL" | "ISL";
+  backendUrl?: string;
+  confidenceThreshold?: number;
 }
