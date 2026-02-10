@@ -6,9 +6,15 @@
  * It coordinates audio capture, camera capture, live transcripts, and accessibility features.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, SafeAreaView, StyleSheet, View, ScrollView } from "react-native";
 import { router } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 
 import { AccessibilityControls } from "@/components/AccessibilityControls";
 import { AudioCapture } from "@/components/AudioCapture";
@@ -19,8 +25,8 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { RealtimeSocketService } from "@/services/RealtimeSocket";
 import {
-    createSpeechToTextService,
-    SpeechToTextService,
+  createSpeechToTextService,
+  SpeechToTextService,
 } from "@/services/speechToText";
 import { useAccessibility, useApp, useTranscript } from "@/state/AppContext";
 import type { SpeakerInfo, TranscriptSegment } from "@/types";
@@ -166,7 +172,7 @@ export default function CommunicationScreen() {
     [addTranscript],
   );
 
-  // Handle audio data from AudioCapture
+  // Handle audio data from AudioCapture (batch mode - native only)
   const handleAudioData = useCallback(
     async (audioBlob: Blob | ArrayBuffer) => {
       if (!sttService) return;
@@ -188,6 +194,34 @@ export default function CommunicationScreen() {
     },
     [sttService, actions],
   );
+
+  // Handle real-time audio chunk (web streaming)
+  const handleAudioChunk = useCallback(
+    (chunk: ArrayBuffer) => {
+      if (!sttService?.connected) return;
+      sttService.sendAudio(chunk);
+    },
+    [sttService],
+  );
+
+  // Handle recording start - connect to Deepgram
+  const handleRecordingStart = useCallback(async () => {
+    if (!sttService) return;
+    try {
+      if (!sttService.connected) {
+        await sttService.connect();
+      }
+    } catch (error) {
+      actions.setError((error as Error).message);
+    }
+  }, [sttService, actions]);
+
+  // Handle recording stop - close the stream
+  const handleRecordingStop = useCallback(() => {
+    if (sttService?.connected) {
+      sttService.finishStream();
+    }
+  }, [sttService]);
 
   // Handle recording status change
   const handleRecordingChange = useCallback(
@@ -267,11 +301,15 @@ export default function CommunicationScreen() {
           {/* Live Transcript - Primary Focus */}
           <View style={styles.transcriptSection}>
             <View style={styles.transcriptHeader}>
-              <ThemedText style={styles.transcriptTitle}>Live Transcript</ThemedText>
+              <ThemedText style={styles.transcriptTitle}>
+                Live Transcript
+              </ThemedText>
               {state.session.isRecording && (
                 <View style={styles.recordingIndicator}>
                   <View style={styles.recordingPulse} />
-                  <ThemedText style={styles.recordingText}>Recording</ThemedText>
+                  <ThemedText style={styles.recordingText}>
+                    Recording
+                  </ThemedText>
                 </View>
               )}
             </View>
@@ -308,14 +346,16 @@ export default function CommunicationScreen() {
         </View>
 
         {/* Controls Area */}
-        <View style={styles.controlsSection}>
-          <View style={styles.controlsCard}>
-            <AudioCapture
-              onAudioData={handleAudioData}
-              onRecordingStatusChange={handleRecordingChange}
-              onError={(error) => actions.setError(error.message)}
-            />
-          </View>
+        <View style={styles.controlsCard}>
+          {/* Audio Capture Control */}
+          <AudioCapture
+            onAudioData={handleAudioData}
+            onAudioChunk={handleAudioChunk}
+            onRecordingStart={handleRecordingStart}
+            onRecordingStop={handleRecordingStop}
+            onRecordingStatusChange={handleRecordingChange}
+            onError={(error) => actions.setError(error.message)}
+          />
         </View>
 
         {/* Text-to-Speech for blind users */}
