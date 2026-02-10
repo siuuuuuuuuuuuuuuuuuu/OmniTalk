@@ -1,98 +1,273 @@
+import React, { useEffect, useRef } from 'react';
+import {
+  Animated,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 
-export default function HomeScreen() {
+// ─── Mode Card ───────────────────────────────────────────────────────────────
+function ModeCard({
+  icon,
+  title,
+  description,
+  accentColor,
+  tintBg,
+  tintBorder,
+  onPress,
+  delay = 0,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  accentColor: string;
+  tintBg: string;
+  tintBorder: string;
+  onPress: () => void;
+  delay?: number;
+}) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(24)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]),
+    ]).start();
+  }, [delay, fadeAnim, slideAnim]);
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.modeCard,
+          { borderColor: tintBorder },
+          pressed && styles.modeCardPressed,
+        ]}
+        onPress={onPress}
+      >
+        {/* Colored accent bar */}
+        <View style={[styles.modeAccent, { backgroundColor: accentColor }]} />
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View style={styles.modeBody}>
+          {/* Icon area */}
+          <View style={[styles.modeIconArea, { backgroundColor: tintBg }]}>
+            <ThemedText style={styles.modeIcon}>{icon}</ThemedText>
+          </View>
+
+          {/* Text content */}
+          <View style={styles.modeContent}>
+            <ThemedText style={[styles.modeTitle, { color: accentColor }]}>{title}</ThemedText>
+            <ThemedText style={styles.modeDescription}>{description}</ThemedText>
+          </View>
+
+          {/* Arrow */}
+          <View style={[styles.modeArrow, { backgroundColor: tintBg }]}>
+            <ThemedText style={[styles.modeArrowText, { color: accentColor }]}>
+              {'\u2192'}
+            </ThemedText>
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
+// ─── Home Screen ─────────────────────────────────────────────────────────────
+export default function HomeScreen() {
+  const brandFade = useRef(new Animated.Value(0)).current;
+  const brandSlide = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(brandFade, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(brandSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
+    ]).start();
+  }, [brandFade, brandSlide]);
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          {/* ── Brand Section ── */}
+          <Animated.View
+            style={[
+              styles.brandSection,
+              { opacity: brandFade, transform: [{ translateY: brandSlide }] },
+            ]}
+          >
+            <Image
+              source={require('@/assets/images/OmniTalk_logo_nobg.png')}
+              style={styles.logo}
+              contentFit="contain"
+            />
+          </Animated.View>
+
+          {/* ── Mode Selection ── */}
+          <View style={styles.modeSection}>
+            <ThemedText style={styles.sectionLabel}>Select a mode</ThemedText>
+
+            <ModeCard
+              icon={'\uD83C\uDF99\uFE0F'}
+              title="Speech to Text"
+              description="Live captions from speakers around you"
+              accentColor="#2563EB"
+              tintBg="#EFF6FF"
+              tintBorder="#BFDBFE"
+              onPress={() => router.navigate('/(tabs)/captions')}
+              delay={200}
+            />
+
+            <ModeCard
+              icon={'\uD83E\uDD1F'}
+              title="Sign to Speech"
+              description="Convert sign language to text and speech in real-time"
+              accentColor="#f7b715"
+              tintBg="#ECFDF5"
+              tintBorder="#ffdb3c"
+              onPress={() => router.navigate('/(tabs)/sign-language')}
+              delay={350}
+            />
+          </View>
+        </View>
+    </SafeAreaView>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  titleContainer: {
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    paddingBottom: 40,
+  },
+
+  // Brand
+  brandSection: {
+    alignItems: 'center',
+    paddingTop: 38,
+    backgroundColor: '#FFFFFF',
+  },
+  logo: {
+    width: 250,
+    height: 250,
+  },
+  tagline: {
+    fontSize: 15,
+    color: '#64748B',
+    fontWeight: '500',
+    marginTop: 6,
+  },
+
+  // Mode selection
+  modeSection: {
+    paddingHorizontal: 30,
+    paddingTop: 2,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 16,
+
+  },
+  modeCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  modeCardPressed: {
+    transform: [{ scale: 0.98 }],
+    shadowOpacity: 0.03,
+  },
+  modeAccent: {
+    width: 5,
+  },
+  modeBody: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    padding: 20,
+    gap: 16,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  modeIconArea: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  modeIcon: {
+    fontSize: 28,
+  },
+  modeContent: {
+    flex: 1,
+  },
+  modeTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  modeDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#64748B',
+    fontWeight: '400',
+  },
+  modeArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modeArrowText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+
+  // Footer
+  footer: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingHorizontal: 40,
+  },
+  footerDivider: {
+    width: 40,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+  footerText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 20,
   },
 });

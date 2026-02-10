@@ -7,7 +7,8 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { SafeAreaView, StyleSheet, View } from "react-native";
+import { Pressable, SafeAreaView, StyleSheet, View, ScrollView } from "react-native";
+import { router } from "expo-router";
 
 import { AccessibilityControls } from "@/components/AccessibilityControls";
 import { AudioCapture } from "@/components/AudioCapture";
@@ -222,27 +223,41 @@ export default function CommunicationScreen() {
       <ThemedView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <ThemedText type="title" style={styles.title}>
-            OmniTalk
-          </ThemedText>
-          <View style={styles.statusIndicators}>
-            <View
-              style={[
-                styles.statusDot,
-                state.session.isConnected
-                  ? styles.statusConnected
-                  : styles.statusDisconnected,
-              ]}
-            />
-            <ThemedText style={styles.statusText}>
-              {state.session.isConnected ? "Connected" : "Disconnected"}
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={styles.backButton}
+              onPress={() => router.back()}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
+            >
+              <ThemedText style={styles.backButtonText}>←</ThemedText>
+            </Pressable>
+            <ThemedText type="title" style={styles.title}>
+              OmniTalk
             </ThemedText>
+          </View>
+
+          <View style={styles.headerRight}>
+            <View style={styles.statusBadge}>
+              <View
+                style={[
+                  styles.statusDot,
+                  state.session.isConnected
+                    ? styles.statusConnected
+                    : styles.statusDisconnected,
+                ]}
+              />
+              <ThemedText style={styles.statusText}>
+                {state.session.isConnected ? "Live" : "Offline"}
+              </ThemedText>
+            </View>
           </View>
         </View>
 
         {/* Error Display */}
         {state.error && (
           <View style={styles.errorBanner}>
+            <ThemedText style={styles.errorIcon}>⚠️</ThemedText>
             <ThemedText style={styles.errorText}>{state.error}</ThemedText>
           </View>
         )}
@@ -250,42 +265,57 @@ export default function CommunicationScreen() {
         {/* Main Content Area */}
         <View style={styles.mainContent}>
           {/* Live Transcript - Primary Focus */}
-          <View style={styles.transcriptContainer}>
-            <LiveTranscript
-              segments={segments}
-              speakers={speakers}
-              autoScroll={true}
-              maxSegments={100}
-            />
+          <View style={styles.transcriptSection}>
+            <View style={styles.transcriptHeader}>
+              <ThemedText style={styles.transcriptTitle}>Live Transcript</ThemedText>
+              {state.session.isRecording && (
+                <View style={styles.recordingIndicator}>
+                  <View style={styles.recordingPulse} />
+                  <ThemedText style={styles.recordingText}>Recording</ThemedText>
+                </View>
+              )}
+            </View>
+            <View style={styles.transcriptContainer}>
+              <LiveTranscript
+                segments={segments}
+                speakers={speakers}
+                autoScroll={true}
+                maxSegments={100}
+              />
+            </View>
           </View>
 
           {/* Camera Preview (for sign language) */}
           {settings.signLanguageEnabled && (
-            <View style={styles.cameraContainer}>
-              <CameraCapture
-                isActive={state.session.isCameraActive}
-                onSignDetected={(result) => {
-                  socketService?.sendSignDetection({
-                    text: result.gesture,
-                    signs: [result.gesture],
-                    confidence: result.confidence,
-                    timestamp: result.timestamp,
-                  });
-                }}
-                onError={(error) => actions.setError(error.message)}
-              />
+            <View style={styles.cameraSection}>
+              <ThemedText style={styles.sectionLabel}>Sign Language</ThemedText>
+              <View style={styles.cameraContainer}>
+                <CameraCapture
+                  isActive={state.session.isCameraActive}
+                  onSignDetected={(result) => {
+                    socketService?.sendSignDetection({
+                      text: result.gesture,
+                      signs: [result.gesture],
+                      confidence: result.confidence,
+                      timestamp: result.timestamp,
+                    });
+                  }}
+                  onError={(error) => actions.setError(error.message)}
+                />
+              </View>
             </View>
           )}
         </View>
 
         {/* Controls Area */}
-        <View style={styles.controlsArea}>
-          {/* Audio Capture Control */}
-          <AudioCapture
-            onAudioData={handleAudioData}
-            onRecordingStatusChange={handleRecordingChange}
-            onError={(error) => actions.setError(error.message)}
-          />
+        <View style={styles.controlsSection}>
+          <View style={styles.controlsCard}>
+            <AudioCapture
+              onAudioData={handleAudioData}
+              onRecordingStatusChange={handleRecordingChange}
+              onError={(error) => actions.setError(error.message)}
+            />
+          </View>
         </View>
 
         {/* Text-to-Speech for blind users */}
@@ -302,23 +332,34 @@ export default function CommunicationScreen() {
 
         {/* Accessibility Settings Panel */}
         {showSettings && (
-          <View style={styles.settingsPanel}>
-            <AccessibilityControls
-              settings={settings}
-              onSettingsChange={updateSettings}
-            />
+          <View style={styles.settingsModal}>
+            <View style={styles.settingsContent}>
+              <View style={styles.settingsHeader}>
+                <ThemedText style={styles.settingsTitle}>Settings</ThemedText>
+                <Pressable
+                  onPress={() => setShowSettings(false)}
+                  style={styles.closeButton}
+                >
+                  <ThemedText style={styles.closeButtonText}>✕</ThemedText>
+                </Pressable>
+              </View>
+              <ScrollView style={styles.settingsScroll}>
+                <AccessibilityControls
+                  settings={settings}
+                  onSettingsChange={updateSettings}
+                />
+              </ScrollView>
+            </View>
           </View>
         )}
 
-        {/* Settings Toggle */}
-        <View style={styles.settingsToggle}>
-          <ThemedText
-            style={styles.settingsToggleText}
-            onPress={() => setShowSettings(!showSettings)}
-          >
-            {showSettings ? "✕ Close Settings" : "⚙ Settings"}
-          </ThemedText>
-        </View>
+        {/* Settings FAB */}
+        <Pressable
+          style={styles.settingsFab}
+          onPress={() => setShowSettings(!showSettings)}
+        >
+          <ThemedText style={styles.settingsFabIcon}>⚙</ThemedText>
+        </Pressable>
       </ThemedView>
     </SafeAreaView>
   );
@@ -327,84 +368,237 @@ export default function CommunicationScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: "#F8FAFB",
   },
   container: {
     flex: 1,
-    padding: 16,
+    backgroundColor: "#F8FAFB",
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
-  title: {
-    fontSize: 24,
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
-  statusIndicators: {
+  headerRight: {
     flexDirection: "row",
     alignItems: "center",
   },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#F0F9FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  backButtonText: {
+    fontSize: 24,
+    color: "#2196F3",
+    fontWeight: "600",
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#2196F3",
+    letterSpacing: 0.5,
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFB",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statusConnected: {
-    backgroundColor: "#50C878",
+    backgroundColor: "#10B981",
   },
   statusDisconnected: {
-    backgroundColor: "#FF6B6B",
+    backgroundColor: "#EF4444",
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#64748B",
   },
   errorBanner: {
-    backgroundColor: "#FF6B6B",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EF4444",
+  },
+  errorIcon: {
+    fontSize: 20,
   },
   errorText: {
-    color: "#FFFFFF",
-    textAlign: "center",
+    flex: 1,
+    color: "#DC2626",
+    fontWeight: "600",
+    fontSize: 14,
   },
   mainContent: {
     flex: 1,
-    flexDirection: "column",
+    padding: 20,
+    gap: 16,
+  },
+  transcriptSection: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  transcriptHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: "#F8FAFB",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  transcriptTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  recordingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  recordingPulse: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#EF4444",
+  },
+  recordingText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#EF4444",
   },
   transcriptContainer: {
     flex: 1,
-    marginBottom: 16,
+  },
+  cameraSection: {
+    height: 240,
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#64748B",
+    marginBottom: 8,
   },
   cameraContainer: {
-    height: 200,
-    marginBottom: 16,
-    borderRadius: 12,
+    flex: 1,
+    borderRadius: 16,
     overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#2196F3",
+    backgroundColor: "#000000",
   },
-  controlsArea: {
-    paddingVertical: 16,
+  controlsSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  controlsCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     alignItems: "center",
   },
-  settingsPanel: {
+  settingsModal: {
     position: "absolute",
-    bottom: 80,
-    left: 16,
-    right: 16,
-    backgroundColor: "rgba(0,0,0,0.9)",
-    borderRadius: 12,
-    padding: 16,
-    maxHeight: 300,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
-  settingsToggle: {
+  settingsContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    width: "100%",
+    maxWidth: 500,
+    maxHeight: "80%",
+    overflow: "hidden",
+  },
+  settingsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  settingsTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F1F5F9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  settingsScroll: {
+    padding: 24,
+  },
+  settingsFab: {
     position: "absolute",
-    bottom: 16,
-    right: 16,
+    bottom: 30,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#2196F3",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#2196F3",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  settingsToggleText: {
-    fontSize: 16,
-    padding: 8,
+  settingsFabIcon: {
+    fontSize: 28,
+    color: "#FFFFFF",
   },
 });
