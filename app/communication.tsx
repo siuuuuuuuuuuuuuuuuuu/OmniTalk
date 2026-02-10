@@ -6,6 +6,7 @@
  * It coordinates audio capture, camera capture, live transcripts, and accessibility features.
  */
 
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -32,7 +33,10 @@ import { useAccessibility, useApp, useTranscript } from "@/state/AppContext";
 import type { SpeakerInfo, TranscriptSegment } from "@/types";
 
 // TODO: Move to environment config
-const DEEPGRAM_API_KEY = process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY || "";
+const DEEPGRAM_API_KEY =
+  Constants.expoConfig?.extra?.deepgramApiKey ||
+  process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY ||
+  "";
 const WEBSOCKET_URL =
   process.env.EXPO_PUBLIC_WEBSOCKET_URL || "ws://localhost:8080";
 

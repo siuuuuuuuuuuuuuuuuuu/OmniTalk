@@ -18,6 +18,10 @@ export interface AudioCaptureProps {
   onError?: (error: Error) => void;
   /** Interval in ms to send audio chunks (default: 250ms) */
   chunkInterval?: number;
+  /** Auto-start recording when component mounts */
+  autoStart?: boolean;
+  /** Hide the UI (for headless operation) */
+  hideUI?: boolean;
 }
 
 export function AudioCapture({
@@ -28,6 +32,8 @@ export function AudioCapture({
   onRecordingStatusChange,
   onError,
   chunkInterval = 250,
+  autoStart = false,
+  hideUI = false,
 }: AudioCaptureProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -35,7 +41,9 @@ export function AudioCapture({
 
   // Refs for expo-av (native)
   const recordingRef = useRef<Audio.Recording | null>(null);
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   // Refs for Web Audio API (web real-time streaming)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -57,6 +65,17 @@ export function AudioCapture({
       cleanup();
     };
   }, []);
+
+  // Auto-start/stop recording based on autoStart prop
+  useEffect(() => {
+    if (!hasPermission) return;
+
+    if (autoStart && !isRecording) {
+      startRecording();
+    } else if (!autoStart && isRecording) {
+      stopRecording();
+    }
+  }, [autoStart, hasPermission]);
 
   const cleanup = () => {
     stopRecording();
@@ -346,6 +365,7 @@ export function AudioCapture({
   };
 
   if (hasPermission === null) {
+    if (hideUI) return null;
     return (
       <ThemedView style={styles.container}>
         <ThemedText>Requesting microphone permission...</ThemedText>
@@ -354,6 +374,7 @@ export function AudioCapture({
   }
 
   if (hasPermission === false) {
+    if (hideUI) return null;
     return (
       <ThemedView style={styles.container}>
         <ThemedText style={styles.errorText}>
@@ -362,6 +383,8 @@ export function AudioCapture({
       </ThemedView>
     );
   }
+
+  if (hideUI) return null;
 
   return (
     <ThemedView style={styles.container}>
