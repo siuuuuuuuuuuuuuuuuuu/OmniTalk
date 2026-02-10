@@ -29,6 +29,8 @@ import type { SpeakerInfo, TranscriptSegment } from "@/types";
 const DEEPGRAM_API_KEY = process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY || "";
 const WEBSOCKET_URL =
   process.env.EXPO_PUBLIC_WEBSOCKET_URL || "ws://localhost:8080";
+const SIGN_BACKEND_URL =
+  process.env.EXPO_PUBLIC_SIGN_BACKEND_URL || "ws://localhost:8080/ws";
 
 export default function CommunicationScreen() {
   const { state, actions } = useApp();
@@ -292,6 +294,7 @@ export default function CommunicationScreen() {
               <View style={styles.cameraContainer}>
                 <CameraCapture
                   isActive={state.session.isCameraActive}
+                  backendUrl={SIGN_BACKEND_URL}
                   onSignDetected={(result) => {
                     socketService?.sendSignDetection({
                       text: result.gesture,
@@ -299,6 +302,21 @@ export default function CommunicationScreen() {
                       confidence: result.confidence,
                       timestamp: result.timestamp,
                     });
+                  }}
+                  onTextResult={(result) => {
+                    const segment = {
+                      id: `sign-${Date.now()}`,
+                      speakerId: state.session.currentUser?.id ?? "local",
+                      speakerName: "Sign Language",
+                      text: result.text,
+                      timestamp: Date.now(),
+                      isFinal: true,
+                      confidence: result.confidence,
+                      source: "sign" as const,
+                    };
+                    addTranscript(segment);
+                    setLatestText(result.text);
+                    socketService?.sendSignDetection(result);
                   }}
                   onError={(error) => actions.setError(error.message)}
                 />
