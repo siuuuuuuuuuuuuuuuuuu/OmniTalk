@@ -1,12 +1,24 @@
-import React from 'react';
-import { Pressable, SafeAreaView, StyleSheet, View } from 'react-native';
-import { Image } from 'expo-image';
 import { ThemedText } from '@/components/themed-text';
+import { createRealtimeSocketService, RealtimeSocketService } from "@/services/RealtimeSocket";
+import { FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
-import { FontAwesome5 } from '@expo/vector-icons';
+import React, { useEffect } from 'react';
+import { Pressable, SafeAreaView, StyleSheet, View } from 'react-native';
 
 export default function HomeScreen() {
+  useEffect(() => { //to test WebSocket connection
+    const socket: RealtimeSocketService = createRealtimeSocketService(
+      {
+        onConnect: () => console.log("✅ WS connected (HomeScreen)"),
+        onDisconnect: (r) => console.log("❌ WS disconnected (HomeScreen):", r),
+        onError: (e) => console.log("⚠️ WS error (HomeScreen):", e),
+      }
+    );
+
+    socket.connect().catch((e) => console.log("WS connect failed:", e));
+
+    return () => socket.disconnect();
+  }, []);
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -91,7 +103,7 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 32,
     fontWeight: '800',
-    lineHeight: 38, 
+    lineHeight: 38,
     color: '#0F172A',
     letterSpacing: -0.5,
     marginTop: 2,

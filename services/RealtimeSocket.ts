@@ -17,6 +17,8 @@ import type {
     WebSocketMessageType,
 } from "@/types";
 
+import { WEBSOCKET_URL } from "@/constants/api";
+
 // ============================================
 // Configuration
 // ============================================
@@ -121,13 +123,28 @@ export class RealtimeSocketService {
    * Build WebSocket URL with query parameters
    */
   private buildUrl(): string {
-    const url = new URL(this.config.url);
+    // Start with the base URL (e.g., ws://192.168.1.X:8000/ws)
+    let urlString = this.config.url;
+
+    // Append roomId as a path parameter
     if (this.config.roomId) {
-      url.searchParams.set("roomId", this.config.roomId);
+      urlString += `/${this.config.roomId}`;
+    } else {
+      // Handle case where roomId is not provided, maybe default or throw error
+      console.warn("RealtimeSocket: roomId is not provided. Using 'default'.");
+      urlString += "/default"; // Default to 'default' room
     }
+
+    const url = new URL(urlString);
+
+    // Add userId as a query parameter
     if (this.config.userId) {
       url.searchParams.set("userId", this.config.userId);
+    } else {
+      console.warn("RealtimeSocket: userId is not provided. Using 'anonymous'.");
+      url.searchParams.set("userId", "anonymous"); // Default to 'anonymous' user
     }
+
     return url.toString();
   }
 
@@ -403,9 +420,8 @@ export class RealtimeSocketService {
  * Create a pre-configured realtime socket service
  */
 export function createRealtimeSocketService(
-  url: string,
   callbacks?: RealtimeSocketCallbacks,
   config?: Partial<RealtimeSocketConfig>,
 ): RealtimeSocketService {
-  return new RealtimeSocketService(url, callbacks, config);
+  return new RealtimeSocketService(WEBSOCKET_URL, callbacks, config);
 }
