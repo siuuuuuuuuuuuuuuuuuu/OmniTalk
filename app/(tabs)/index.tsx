@@ -1,98 +1,151 @@
+import React from 'react';
+import { Pressable, SafeAreaView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        {/* Greeting */}
+        <View style={styles.greetingArea}>
+          <ThemedText style={styles.appName}>Welcome to</ThemedText>
+          <ThemedText style={styles.appName}>OmniTalk</ThemedText>
+          <ThemedText style={styles.subtitle}>
+            Choose how you want to communicate
+          </ThemedText>
+        </View>
+
+        {/* Mode cards */}
+        <View style={styles.cardsRow}>
+          <Pressable
+            style={({ pressed }) => [styles.card, styles.cardBlue, pressed && styles.cardPressed]}
+            onPress={() => router.navigate('/(tabs)/captions')}
+          >
+            <View style={styles.cardIconWrap}>
+              <MaterialIcons name="mic" size={32} color="#2563EB" />
+            </View>
+            <ThemedText style={styles.cardTitle}>Speech{'\n'}to Text</ThemedText>
+            <ThemedText style={styles.cardSub}>Live captions</ThemedText>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.card, styles.cardYellow, pressed && styles.cardPressed]}
+            onPress={() => router.navigate('/(tabs)/sign-language')}
+          >
+            <View style={styles.cardIconWrap}>
+              <FontAwesome5 name="sign-language" size={28} color="#D97706" />
+            </View>
+            <ThemedText style={styles.cardTitle}>Sign{'\n'}to Speech</ThemedText>
+            <ThemedText style={styles.cardSub}>Camera translate</ThemedText>
+          </Pressable>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 28,
+    paddingTop: 30,
+  },
+
+  // Logo
+  logoArea: {
     alignItems: 'center',
-    gap: 8,
+    paddingTop: 12,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  logoClip: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    overflow: 'hidden',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  logo: {
+    width: 180,
+    height: 180,
+  },
+
+  // Greeting
+  greetingArea: {
+    paddingTop: 12,
+    paddingBottom: 32,
+  },
+  greeting: {
+    fontSize: 16,
+    color: '#94A3B8',
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  appName: {
+    fontSize: 32,
+    fontWeight: '800',
+    lineHeight: 38, 
+    color: '#0F172A',
+    letterSpacing: -0.5,
+    marginTop: 2,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#94A3B8',
+    fontWeight: '400',
+    marginTop: 8,
+  },
+
+  // Cards
+  cardsRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  card: {
+    flex: 1,
+    borderRadius: 24,
+    padding: 22,
+    paddingTop: 28,
+    paddingBottom: 24,
+    minHeight: 180,
+    justifyContent: 'space-between',
+  },
+  cardBlue: {
+    backgroundColor: '#EFF6FF',
+  },
+  cardYellow: {
+    backgroundColor: '#FFF8E1',
+  },
+  cardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+  },
+  cardIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 26,
+  },
+  cardSub: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+    marginTop: 4,
   },
 });

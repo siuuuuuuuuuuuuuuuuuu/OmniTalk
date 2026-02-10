@@ -15,6 +15,14 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: '#E2E8F0',
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 70,
+        },
       }}>
       <Tabs.Screen
         name="index"
@@ -24,10 +32,23 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="captions"
+        options={{
+          title: 'Captions',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="text.bubble.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="sign-language"
+        options={{
+          title: 'Sign',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="hand.raised.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="explore"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          href: null,
         }}
       />
     </Tabs>
