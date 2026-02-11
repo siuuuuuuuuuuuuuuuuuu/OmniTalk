@@ -60,6 +60,7 @@ export interface SignDetectionResult {
   confidence: number;
   landmarks?: HandLandmark[];
   timestamp: number;
+  isFinal: boolean;
 }
 
 export interface HandLandmark {
@@ -74,6 +75,7 @@ export interface SignToTextResult {
   signs: string[];
   confidence: number;
   timestamp: number;
+  isFinal: boolean;
 }
 
 // ============================================

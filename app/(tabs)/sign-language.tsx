@@ -8,8 +8,10 @@ import {
   View,
 } from 'react-native';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
-import * as Speech from 'expo-speech';
+import { AccessibilityControls } from '@/components/AccessibilityControls';
 import { ThemedText } from '@/components/themed-text';
+import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useAccessibility } from '@/state/AppContext';
 
 // ─── Mock detected signs (static demo data) ─────────────────────────────────
 const MOCK_DETECTED: { id: string; text: string; timestamp: number }[] = [
@@ -19,8 +21,29 @@ const MOCK_DETECTED: { id: string; text: string; timestamp: number }[] = [
   { id: '4', text: 'Can we schedule a follow-up meeting', timestamp: Date.now() - 3000 },
 ];
 
+// ─── Font size helper ────────────────────────────────────────────────────────
+function getAccessibleFontSize(fontSize: string): number {
+  switch (fontSize) {
+    case 'small': return 13;
+    case 'medium': return 15;
+    case 'large': return 19;
+    case 'extra-large': return 25;
+    default: return 15;
+  }
+}
+
 // ─── Detected Text Item ──────────────────────────────────────────────────────
-function DetectedItem({ item, isLatest }: { item: typeof MOCK_DETECTED[0]; isLatest: boolean }) {
+function DetectedItem({
+  item,
+  isLatest,
+  highContrast,
+  fontSize,
+}: {
+  item: typeof MOCK_DETECTED[0];
+  isLatest: boolean;
+  highContrast: boolean;
+  fontSize: number;
+}) {
   const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const fadeAnim = useRef(new Animated.Value(isLatest ? 0 : 1)).current;
   const slideAnim = useRef(new Animated.Value(isLatest ? 10 : 0)).current;
@@ -39,13 +62,24 @@ function DetectedItem({ item, isLatest }: { item: typeof MOCK_DETECTED[0]; isLat
       style={[
         styles.detectedItem,
         isLatest && styles.detectedItemLatest,
+        highContrast && styles.detectedItemHighContrast,
         { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
       ]}
     >
       <View style={styles.detectedDot} />
       <View style={styles.detectedContent}>
-        <ThemedText style={styles.detectedText}>{item.text}</ThemedText>
-        <ThemedText style={styles.detectedTime}>{time}</ThemedText>
+        <ThemedText
+          style={[
+            styles.detectedText,
+            { fontSize, lineHeight: fontSize * 1.47 },
+            highContrast && styles.highContrastText,
+          ]}
+        >
+          {item.text}
+        </ThemedText>
+        <ThemedText style={[styles.detectedTime, highContrast && styles.highContrastMuted]}>
+          {time}
+        </ThemedText>
       </View>
     </Animated.View>
   );
@@ -57,8 +91,11 @@ export default function SignLanguageScreen() {
   const [facing, setFacing] = useState<CameraType>('front');
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectedSigns] = useState(MOCK_DETECTED);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+
+  const { settings, updateSettings } = useAccessibility();
+  const tts = useTextToSpeech({ autoSpeak: false });
+  const [showSettings, setShowSettings] = useState(false);
 
   const fullText = detectedSigns.map(d => d.text).join('. ');
 
@@ -73,28 +110,28 @@ export default function SignLanguageScreen() {
   const speakText = useCallback(async () => {
     if (!fullText.trim()) return;
 
-    const speaking = await Speech.isSpeakingAsync();
-    if (speaking) {
-      await Speech.stop();
-      setIsSpeaking(false);
+    if (tts.isSpeaking) {
+      await tts.stop();
       return;
     }
 
-    setIsSpeaking(true);
-    Speech.speak(fullText, {
-      rate: 0.9,
-      pitch: 1.0,
-      language: 'en-US',
-      onDone: () => setIsSpeaking(false),
-      onStopped: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
-  }, [fullText]);
+    tts.speak(fullText);
+  }, [fullText, tts]);
 
   const clearText = useCallback(() => {
-    Speech.stop();
-    setIsSpeaking(false);
-  }, []);
+    tts.stop();
+  }, [tts]);
+
+  // Auto-read new detections when TTS is enabled
+  const lastReadId = useRef<string>('');
+  useEffect(() => {
+    if (!settings.ttsEnabled || detectedSigns.length === 0) return;
+    const latest = detectedSigns[detectedSigns.length - 1];
+    if (latest.id !== lastReadId.current) {
+      lastReadId.current = latest.id;
+      tts.speakSegment(latest.text, 'Sign Language');
+    }
+  }, [detectedSigns, settings.ttsEnabled]);
 
   // ── Permission states ──
   if (!permission) {
@@ -129,11 +166,13 @@ export default function SignLanguageScreen() {
     );
   }
 
+  const accessibleFontSize = getAccessibleFontSize(settings.fontSize);
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, settings.highContrast && styles.safeAreaHighContrast]}>
+      <View style={[styles.container, settings.highContrast && styles.containerHighContrast]}>
         {/* ── Header ── */}
-        <View style={styles.header}>
+        <View style={[styles.header, settings.highContrast && styles.headerHighContrast]}>
           <View>
             <ThemedText style={styles.headerTitle}>Sign Language</ThemedText>
             <ThemedText style={styles.headerSub}>Front camera active</ThemedText>
@@ -220,6 +259,8 @@ export default function SignLanguageScreen() {
                   key={item.id}
                   item={item}
                   isLatest={index === detectedSigns.length - 1}
+                  highContrast={settings.highContrast}
+                  fontSize={accessibleFontSize}
                 />
               ))
             )}
@@ -230,16 +271,16 @@ export default function SignLanguageScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.speakBtn,
-                isSpeaking && styles.speakBtnActive,
+                tts.isSpeaking && styles.speakBtnActive,
                 pressed && styles.speakBtnPressed,
               ]}
               onPress={speakText}
             >
               <ThemedText style={styles.speakBtnIcon}>
-                {isSpeaking ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
+                {tts.isSpeaking ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
               </ThemedText>
-              <ThemedText style={[styles.speakBtnText, isSpeaking && styles.speakBtnTextActive]}>
-                {isSpeaking ? 'Stop' : 'Speak All'}
+              <ThemedText style={[styles.speakBtnText, tts.isSpeaking && styles.speakBtnTextActive]}>
+                {tts.isSpeaking ? 'Stop' : 'Speak All'}
               </ThemedText>
             </Pressable>
 
@@ -249,8 +290,52 @@ export default function SignLanguageScreen() {
             >
               <ThemedText style={styles.clearBtnText}>Clear</ThemedText>
             </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.settingsBtn, pressed && styles.settingsBtnPressed]}
+              onPress={() => setShowSettings(!showSettings)}
+              accessibilityLabel={showSettings ? "Close settings" : "Open accessibility settings"}
+              accessibilityRole="button"
+            >
+              <ThemedText style={styles.settingsBtnIcon}>⚙</ThemedText>
+            </Pressable>
           </View>
         </View>
+
+        {/* ── Accessibility Settings Modal ── */}
+        {showSettings && (
+          <View
+            style={styles.settingsModal}
+            accessibilityViewIsModal={true}
+            accessibilityLabel="Accessibility settings modal"
+          >
+            <Pressable
+              style={styles.settingsBackdrop}
+              onPress={() => setShowSettings(false)}
+              accessibilityLabel="Close settings"
+              accessibilityRole="button"
+            />
+            <View style={styles.settingsContent}>
+              <View style={styles.settingsHeader}>
+                <ThemedText style={styles.settingsTitle}>Settings</ThemedText>
+                <Pressable
+                  onPress={() => setShowSettings(false)}
+                  style={styles.settingsCloseBtn}
+                  accessibilityLabel="Close settings"
+                  accessibilityRole="button"
+                >
+                  <ThemedText style={styles.settingsCloseBtnText}>✕</ThemedText>
+                </Pressable>
+              </View>
+              <ScrollView style={styles.settingsScroll}>
+                <AccessibilityControls
+                  settings={settings}
+                  onSettingsChange={updateSettings}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -259,7 +344,9 @@ export default function SignLanguageScreen() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  safeAreaHighContrast: { backgroundColor: '#000000' },
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+  containerHighContrast: { backgroundColor: '#000000' },
 
   // Header
   header: {
@@ -273,6 +360,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
+  headerHighContrast: { backgroundColor: '#111111', borderBottomColor: '#333333' },
   headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A', letterSpacing: 0.3 },
   headerSub: { fontSize: 13, color: '#94A3B8', marginTop: 2, fontWeight: '500' },
 
@@ -462,6 +550,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 4,
   },
+  detectedItemHighContrast: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#333333',
+  },
+  highContrastText: {
+    color: '#FFFFFF',
+  },
+  highContrastMuted: {
+    color: '#AAAAAA',
+  },
 
   emptyState: {
     alignItems: 'center',
@@ -490,7 +588,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#E2E8F0',
   },
   speakBtn: {
-    flex: 1,
+    flex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -506,7 +604,7 @@ const styles = StyleSheet.create({
   speakBtnTextActive: { color: '#FFFFFF' },
 
   clearBtn: {
-    paddingHorizontal: 20,
+    flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
     backgroundColor: '#F1F5F9',
@@ -515,6 +613,17 @@ const styles = StyleSheet.create({
   },
   clearBtnPressed: { backgroundColor: '#E2E8F0' },
   clearBtnText: { fontSize: 15, fontWeight: '600', color: '#64748B' },
+
+  settingsBtn: {
+    width: 48,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#64748B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsBtnPressed: { backgroundColor: '#475569' },
+  settingsBtnIcon: { fontSize: 20, color: '#FFFFFF' },
 
   // Permission
   permissionContainer: {
@@ -557,4 +666,63 @@ const styles = StyleSheet.create({
   },
   permissionButtonPressed: { opacity: 0.9 },
   permissionButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  // Settings Modal
+  settingsModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    zIndex: 100,
+  },
+  settingsBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  settingsContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  settingsTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  settingsCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsCloseBtnText: {
+    fontSize: 20,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  settingsScroll: {
+    padding: 24,
+  },
 });

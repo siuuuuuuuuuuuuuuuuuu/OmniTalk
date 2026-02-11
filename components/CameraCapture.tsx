@@ -1,6 +1,6 @@
 /**
  * CameraCapture - Camera Input Component
- * Person 4: Sign Language to Text and Camera Capture
+ * Person 4: Camera Capture
  *
  * Handles camera input and captures video frames for sign language translation.
  * Integrates with SignToTextService for gesture recognition and text conversion.
@@ -32,6 +32,7 @@ import type {
 
 // Frame capture interval in milliseconds
 const FRAME_CAPTURE_INTERVAL = 100; // 10 FPS for sign detection
+const FRAME_QUALITY = 0.5; // Lower quality for faster streaming
 const MAX_GESTURE_HISTORY = 8;
 
 interface DetectedGesture {
@@ -58,15 +59,18 @@ export function CameraCapture({
   const [gestureConfidence, setGestureConfidence] = useState(0);
   const [landmarks, setLandmarks] = useState<HandLandmark[]>([]);
   const [gestureHistory, setGestureHistory] = useState<DetectedGesture[]>([]);
+  const [frameCount, setFrameCount] = useState(0);
 
   const cameraRef = useRef<CameraView>(null);
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const frameCountRef = useRef(0);
   const signServiceRef = useRef<SignToTextService | null>(null);
   const gestureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Animated values for gesture feedback
   const gestureFadeAnim = useRef(new Animated.Value(0)).current;
   const gestureScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Initialize SignToTextService
   const signServiceCallbacks: SignToTextCallbacks = useMemo(
@@ -101,7 +105,7 @@ export function CameraCapture({
             setCurrentGesture(null);
             gestureScaleAnim.setValue(0.8);
           });
-        }, 2000);
+        }, 2000) as unknown as NodeJS.Timeout;
 
         // Notify parent
         const result: SignDetectionResult = {
@@ -109,6 +113,7 @@ export function CameraCapture({
           confidence,
           landmarks: [],
           timestamp: Date.now(),
+          isFinal: true,
         };
         onSignDetected?.(result);
       },
@@ -130,8 +135,9 @@ export function CameraCapture({
         onTextResult?.(result);
       },
 
-      onLandmarksDetected: (detectedLandmarks: HandLandmark[]) => {
-        setLandmarks(detectedLandmarks);
+      onLandmarksDetected: (detectedLandmarks: HandLandmark[][]) => {
+        // Flatten array of arrays to single array for display
+        setLandmarks(detectedLandmarks.flat());
       },
 
       onError: (error: Error) => {
@@ -145,22 +151,14 @@ export function CameraCapture({
   useEffect(() => {
     const service = new SignToTextService(
       {
-        backendUrl,
+        backendUrl: backendUrl || "",
         confidenceThreshold,
         language: signLanguage,
-        gestureBufferSize: 5,
       },
       signServiceCallbacks,
     );
 
     signServiceRef.current = service;
-
-    // Connect to backend if URL is provided
-    if (backendUrl) {
-      service.connectToBackend().catch((error) => {
-        onError?.(error as Error);
-      });
-    }
 
     return () => {
       service.disconnect();
@@ -172,6 +170,30 @@ export function CameraCapture({
   useEffect(() => {
     signServiceRef.current?.setCallbacks(signServiceCallbacks);
   }, [signServiceCallbacks]);
+
+  // Start pulse animation when capturing
+  useEffect(() => {
+    if (isCapturing) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isCapturing, pulseAnim]);
 
   // Request permissions on mount
   useEffect(() => {
@@ -206,9 +228,12 @@ export function CameraCapture({
     if (captureIntervalRef.current) return;
 
     setIsCapturing(true);
+    frameCountRef.current = 0;
+    setFrameCount(0);
+
     captureIntervalRef.current = setInterval(async () => {
       await captureFrame();
-    }, FRAME_CAPTURE_INTERVAL);
+    }, FRAME_CAPTURE_INTERVAL) as unknown as NodeJS.Timeout;
   }, []);
 
   const stopCapturing = useCallback(() => {
@@ -225,12 +250,15 @@ export function CameraCapture({
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.5,
+        quality: FRAME_QUALITY,
         base64: true,
         skipProcessing: true,
       });
 
       if (photo?.base64) {
+        frameCountRef.current += 1;
+        setFrameCount(frameCountRef.current);
+
         // Pass raw frame to parent if they want it
         onFrame?.(photo.base64);
 
@@ -255,7 +283,6 @@ export function CameraCapture({
 
   const clearHistory = useCallback(() => {
     setGestureHistory([]);
-    signServiceRef.current?.clearBuffer();
   }, []);
 
   // Render landmark dots on the camera overlay
@@ -285,7 +312,11 @@ export function CameraCapture({
   if (!permission) {
     return (
       <ThemedView style={styles.container}>
-        <ThemedText>Requesting camera permission...</ThemedText>
+        <View style={styles.centeredMessage}>
+          <ThemedText style={styles.messageText}>
+            Requesting camera permission...
+          </ThemedText>
+        </View>
       </ThemedView>
     );
   }
@@ -294,14 +325,22 @@ export function CameraCapture({
   if (!permission.granted) {
     return (
       <ThemedView style={styles.container}>
-        <ThemedText style={styles.errorText}>
-          Camera permission denied
-        </ThemedText>
-        <Pressable style={styles.permissionButton} onPress={requestPermission}>
-          <ThemedText style={styles.permissionButtonText}>
-            Grant Permission
+        <View style={styles.centeredMessage}>
+          <ThemedText style={styles.errorText}>
+            Camera permission is required for sign language detection
           </ThemedText>
-        </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.permissionButton,
+              pressed && styles.permissionButtonPressed,
+            ]}
+            onPress={requestPermission}
+          >
+            <ThemedText style={styles.permissionButtonText}>
+              Grant Permission
+            </ThemedText>
+          </Pressable>
+        </View>
       </ThemedView>
     );
   }
@@ -311,6 +350,7 @@ export function CameraCapture({
     return (
       <ThemedView style={styles.container}>
         <View style={styles.inactiveOverlay}>
+          <ThemedText style={styles.inactiveIcon}>{"\uD83D\uDCF7"}</ThemedText>
           <ThemedText style={styles.inactiveText}>Camera paused</ThemedText>
           <ThemedText style={styles.inactiveSubtext}>
             Enable sign language detection to activate
@@ -334,8 +374,15 @@ export function CameraCapture({
             </View>
             {isCapturing && (
               <View style={styles.recordingIndicator}>
-                <View style={styles.recordingDot} />
-                <ThemedText style={styles.recordingText}>Detecting</ThemedText>
+                <Animated.View
+                  style={[styles.recordingDot, { opacity: pulseAnim }]}
+                />
+                <ThemedText style={styles.recordingText}>
+                  Capturing
+                </ThemedText>
+                <ThemedText style={styles.frameCountText}>
+                  {frameCount} frames
+                </ThemedText>
               </View>
             )}
           </View>
@@ -365,9 +412,15 @@ export function CameraCapture({
 
           {/* Hand detection guide */}
           <View style={styles.handGuide}>
-            <View style={styles.handGuideFrame} />
+            <View style={styles.handGuideFrame}>
+              {/* Corner markers for the guide box */}
+              <View style={[styles.cornerMark, styles.cornerTopLeft]} />
+              <View style={[styles.cornerMark, styles.cornerTopRight]} />
+              <View style={[styles.cornerMark, styles.cornerBottomLeft]} />
+              <View style={[styles.cornerMark, styles.cornerBottomRight]} />
+            </View>
             <ThemedText style={styles.handGuideText}>
-              Position hands here
+              Position hands within the frame
             </ThemedText>
           </View>
 
@@ -375,7 +428,10 @@ export function CameraCapture({
           <View style={styles.controls}>
             {/* Flip camera */}
             <Pressable
-              style={styles.controlButton}
+              style={({ pressed }) => [
+                styles.controlButton,
+                pressed && styles.controlButtonPressed,
+              ]}
               onPress={toggleFacing}
               accessibilityLabel="Flip camera"
               accessibilityRole="button"
@@ -393,7 +449,7 @@ export function CameraCapture({
               ]}
               onPress={() => (isCapturing ? stopCapturing() : startCapturing())}
               accessibilityLabel={
-                isCapturing ? "Stop detection" : "Start detection"
+                isCapturing ? "Stop capture" : "Start capture"
               }
               accessibilityRole="button"
             >
@@ -484,18 +540,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    gap: 8,
   },
   recordingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: "#50C878",
-    marginRight: 8,
   },
   recordingText: {
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "600",
+  },
+  frameCountText: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 10,
+    fontWeight: "500",
   },
 
   // Landmarks
@@ -544,15 +605,51 @@ const styles = StyleSheet.create({
   handGuideFrame: {
     width: 200,
     height: 200,
-    borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.5)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.25)",
     borderRadius: 20,
-    borderStyle: "dashed",
   },
   handGuideText: {
-    color: "rgba(255, 255, 255, 0.7)",
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 12,
     marginTop: 12,
+    fontWeight: "500",
+  },
+
+  // Corner markers for the guide frame
+  cornerMark: {
+    position: "absolute",
+    width: 24,
+    height: 24,
+    borderColor: "rgba(255, 255, 255, 0.7)",
+  },
+  cornerTopLeft: {
+    top: -1,
+    left: -1,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderTopLeftRadius: 20,
+  },
+  cornerTopRight: {
+    top: -1,
+    right: -1,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderTopRightRadius: 20,
+  },
+  cornerBottomLeft: {
+    bottom: -1,
+    left: -1,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderBottomLeftRadius: 20,
+  },
+  cornerBottomRight: {
+    bottom: -1,
+    right: -1,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderBottomRightRadius: 20,
   },
 
   // Controls
@@ -568,6 +665,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  controlButtonPressed: {
+    backgroundColor: "rgba(255, 255, 255, 0.35)",
   },
   controlButtonText: {
     fontSize: 20,
@@ -638,12 +738,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  // Inactive state
+  // Inactive / Permission states
+  centeredMessage: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  messageText: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 15,
+    fontWeight: "500",
+  },
   inactiveOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    gap: 8,
+  },
+  inactiveIcon: {
+    fontSize: 36,
+    marginBottom: 8,
   },
   inactiveText: {
     color: "#FFFFFF",
@@ -651,25 +767,30 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   inactiveSubtext: {
-    color: "rgba(255, 255, 255, 0.6)",
+    color: "rgba(255, 255, 255, 0.5)",
     fontSize: 14,
-    marginTop: 8,
   },
 
   // Error/Permission states
   errorText: {
     color: "#FF6B6B",
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: 20,
+    fontSize: 15,
+    lineHeight: 22,
   },
   permissionButton: {
     backgroundColor: "#4A90D9",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  permissionButtonPressed: {
+    opacity: 0.9,
   },
   permissionButtonText: {
     color: "#FFFFFF",
-    fontWeight: "600",
+    fontWeight: "700",
+    fontSize: 15,
   },
 });
