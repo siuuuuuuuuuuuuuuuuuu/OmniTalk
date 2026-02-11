@@ -1,26 +1,23 @@
 import { AudioCapture } from "@/components/AudioCapture";
 import { ThemedText } from "@/components/themed-text";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
 import {
   createSpeechToTextService,
   SpeechToTextService,
   TranscriptionResult,
 } from "@/services/speechToText";
+import { useAccessibility } from "@/state/AppContext";
 import { Audio } from "expo-av";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
-  FlatList,
   Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  View,
-} from 'react-native';
-import { ThemedText } from '@/components/themed-text';
-import { useTextToSpeech } from '@/hooks/useTextToSpeech';
-import { useAccessibility } from '@/state/AppContext';
+  View
 } from "react-native";
 
 const DEEPGRAM_API_KEY =
@@ -333,26 +330,38 @@ function CaptionBubble({
 }
 
 // ─── TTS Controls Inline ────────────────────────────────────────────────────
-function TTSControls({ tts, fullText }: { tts: ReturnType<typeof useTextToSpeech>; fullText: string }) {
+function TTSControls({
+  tts,
+  fullText,
+}: {
+  tts: ReturnType<typeof useTextToSpeech>;
+  fullText: string;
+}) {
   return (
     <View style={styles.ttsBar}>
       <View style={styles.ttsInfo}>
         <ThemedText style={styles.ttsIcon}>
-          {tts.isSpeaking ? '\uD83D\uDD0A' : '\uD83D\uDD08'}
+          {tts.isSpeaking ? "\uD83D\uDD0A" : "\uD83D\uDD08"}
         </ThemedText>
         <View>
           <ThemedText style={styles.ttsLabel}>
-            {tts.isEnabled ? 'TTS Active' : 'TTS Off'}
+            {tts.isEnabled ? "TTS Active" : "TTS Off"}
           </ThemedText>
           {tts.isSpeaking && (
-            <ThemedText style={styles.ttsStatus}>Reading captions aloud...</ThemedText>
+            <ThemedText style={styles.ttsStatus}>
+              Reading captions aloud...
+            </ThemedText>
           )}
         </View>
       </View>
       <View style={styles.ttsActions}>
         {tts.isSpeaking ? (
           <Pressable
-            style={({ pressed }) => [styles.ttsButton, styles.ttsStopBtn, pressed && styles.ttsBtnPressed]}
+            style={({ pressed }) => [
+              styles.ttsButton,
+              styles.ttsStopBtn,
+              pressed && styles.ttsBtnPressed,
+            ]}
             onPress={() => tts.stop()}
             accessibilityLabel="Stop reading"
             accessibilityRole="button"
@@ -382,32 +391,6 @@ function TTSControls({ tts, fullText }: { tts: ReturnType<typeof useTextToSpeech
 
 // ─── Main Screen ────────────────────────────────────────────────────────────
 export default function CaptionsScreen() {
-  const listRef = useRef<FlatList>(null);
-  const allCaptions = [...INITIAL_CAPTIONS, ...QUEUED_CAPTIONS.map(c => ({ ...c, timestamp: Date.now() }))];
-  const [captions] = useState<Caption[]>(allCaptions);
-  const [activeSpeakerIndex] = useState(allCaptions[allCaptions.length - 1].speakerIndex);
-  const { settings } = useAccessibility();
-
-  // TTS integration — auto-reads new captions for blind users
-  const tts = useTextToSpeech({ autoSpeak: false, announceSpeakers: true });
-  const lastReadCaptionId = useRef<string>('');
-
-  // Auto-read the latest caption when TTS is enabled
-  useEffect(() => {
-    if (!settings.ttsEnabled || captions.length === 0) return;
-    const latest = captions[captions.length - 1];
-    if (latest.id !== lastReadCaptionId.current) {
-      lastReadCaptionId.current = latest.id;
-      tts.speakSegment(latest.text, latest.speaker);
-    }
-  }, [captions, settings.ttsEnabled]);
-
-  // Scroll to bottom on new caption
-  const handleContentSizeChange = useCallback(() => {
-    listRef.current?.scrollToEnd({ animated: true });
-  }, []);
-
-  const fullText = captions.map(c => `${c.speaker}: ${c.text}`).join('. ');
   const scrollRef = useRef<ScrollView>(null);
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [activeSpeakerIndex, setActiveSpeakerIndex] = useState(0);
@@ -428,6 +411,22 @@ export default function CaptionsScreen() {
 
   // Microphone permission state
   const [micPermission, setMicPermission] = useState<boolean | null>(null);
+
+  // Accessibility & TTS
+  const { settings } = useAccessibility();
+  const tts = useTextToSpeech({ autoSpeak: false, announceSpeakers: true });
+  const lastReadCaptionId = useRef<string>("");
+  const fullText = captions.map((c) => `${c.speaker}: ${c.text}`).join(". ");
+
+  // Auto-read the latest caption when TTS is enabled
+  useEffect(() => {
+    if (!settings.ttsEnabled || captions.length === 0) return;
+    const latest = captions[captions.length - 1];
+    if (latest.id !== lastReadCaptionId.current) {
+      lastReadCaptionId.current = latest.id;
+      tts.speakSegment(latest.text, latest.speaker);
+    }
+  }, [captions, settings.ttsEnabled]);
 
   // Request microphone permission on mount (platform-aware)
   useEffect(() => {
@@ -768,9 +767,7 @@ export default function CaptionsScreen() {
         />
 
         {/* ── TTS Controls (for blind users) ── */}
-        {settings.ttsEnabled && (
-          <TTSControls tts={tts} fullText={fullText} />
-        )}
+        {settings.ttsEnabled && <TTSControls tts={tts} fullText={fullText} />}
 
         {/* ── Transcript ── */}
         <View style={styles.transcriptSection}>
@@ -1004,18 +1001,18 @@ const styles = StyleSheet.create({
 
   // TTS Controls
   ttsBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: "#EFF6FF",
     borderBottomWidth: 1,
-    borderBottomColor: '#BFDBFE',
+    borderBottomColor: "#BFDBFE",
   },
   ttsInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
   ttsIcon: {
@@ -1023,17 +1020,17 @@ const styles = StyleSheet.create({
   },
   ttsLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1E40AF',
+    fontWeight: "600",
+    color: "#1E40AF",
   },
   ttsStatus: {
     fontSize: 11,
-    color: '#3B82F6',
-    fontWeight: '500',
+    color: "#3B82F6",
+    fontWeight: "500",
     marginTop: 1,
   },
   ttsActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   ttsButton: {
@@ -1042,10 +1039,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   ttsPlayBtn: {
-    backgroundColor: '#2563EB',
+    backgroundColor: "#2563EB",
   },
   ttsStopBtn: {
-    backgroundColor: '#DC2626',
+    backgroundColor: "#DC2626",
   },
   ttsBtnDisabled: {
     opacity: 0.4,
@@ -1055,8 +1052,8 @@ const styles = StyleSheet.create({
   },
   ttsBtnText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 
   // Transcript
