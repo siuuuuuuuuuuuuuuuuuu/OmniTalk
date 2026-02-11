@@ -13,13 +13,15 @@ import { ThemedText } from '@/components/themed-text';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useAccessibility } from '@/state/AppContext';
 
-// ─── Mock detected signs (static demo data) ─────────────────────────────────
-const MOCK_DETECTED: { id: string; text: string; timestamp: number }[] = [
-  { id: '1', text: 'Hello everyone', timestamp: Date.now() - 15000 },
-  { id: '2', text: 'Thank you for having me', timestamp: Date.now() - 11000 },
-  { id: '3', text: 'I have a question about the project timeline', timestamp: Date.now() - 7000 },
-  { id: '4', text: 'Can we schedule a follow-up meeting', timestamp: Date.now() - 3000 },
-];
+// ─── Types ───────────────────────────────────────────────────────────────────
+type DetectedSign = {
+  id: string;
+  text: string;
+  timestamp: number;
+};
+
+// ─── Detected signs (will be populated by actual sign detection) ───────────
+const INITIAL_DETECTED: DetectedSign[] = [];
 
 // ─── Font size helper ────────────────────────────────────────────────────────
 function getAccessibleFontSize(fontSize: string): number {
@@ -39,7 +41,7 @@ function DetectedItem({
   highContrast,
   fontSize,
 }: {
-  item: typeof MOCK_DETECTED[0];
+  item: DetectedSign;
   isLatest: boolean;
   highContrast: boolean;
   fontSize: number;
@@ -90,7 +92,7 @@ export default function SignLanguageScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
   const [isDetecting, setIsDetecting] = useState(false);
-  const [detectedSigns] = useState(MOCK_DETECTED);
+  const [detectedSigns, setDetectedSigns] = useState(INITIAL_DETECTED);
   const cameraRef = useRef<CameraView>(null);
 
   const { settings, updateSettings } = useAccessibility();
@@ -120,6 +122,7 @@ export default function SignLanguageScreen() {
 
   const clearText = useCallback(() => {
     tts.stop();
+    setDetectedSigns([]);
   }, [tts]);
 
   // Auto-read new detections when TTS is enabled
