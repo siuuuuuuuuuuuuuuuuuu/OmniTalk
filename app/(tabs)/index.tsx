@@ -41,7 +41,7 @@ export default function HomeScreen() {
               <FontAwesome5 name="sign-language" size={28} color="#D97706" />
             </View>
             <ThemedText style={styles.cardTitle}>Sign{'\n'}to Speech</ThemedText>
-            <ThemedText style={styles.cardSub}>Camera translate</ThemedText>
+            <ThemedText style={styles.cardSub}>Live translation</ThemedText>
           </Pressable>
         </View>
       </View>
