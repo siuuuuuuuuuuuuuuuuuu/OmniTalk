@@ -24,10 +24,11 @@ import { LiveTranscript } from "@/components/LiveTranscript";
 import { TextToSpeech } from "@/components/TextToSpeech";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { WEBSOCKET_URL } from "@/constants/api";
 import { RealtimeSocketService } from "@/services/RealtimeSocket";
 import {
   createSpeechToTextService,
-  SpeechToTextService,
+  SpeechToTextService
 } from "@/services/speechToText";
 import { useAccessibility, useApp, useTranscript } from "@/state/AppContext";
 import type { SpeakerInfo, TranscriptSegment } from "@/types";
@@ -63,8 +64,13 @@ export default function CommunicationScreen() {
   }, []);
 
   const initializeServices = async () => {
+    console.log("DEBUG: initializeServices started");
     try {
-      // Initialize Speech-to-Text service
+      console.log("Initializing CommunicationScreen");
+
+      // =========================
+      // Speech-to-Text service
+      // =========================
       const stt = createSpeechToTextService(
         DEEPGRAM_API_KEY,
         {
@@ -78,21 +84,53 @@ export default function CommunicationScreen() {
           onClose: () => console.log("STT disconnected"),
         },
       );
+
       setSttService(stt);
+      console.log("DEBUG: STT service initialized");
 
-      // Initialize WebSocket service for real-time communication
-      const socket = new RealtimeSocketService(WEBSOCKET_URL, {
-        onConnect: () => actions.setConnected(true),
-        onDisconnect: () => actions.setConnected(false),
-        onTranscript: handleRemoteTranscript,
-        onSignDetection: handleSignDetection,
-        onError: (error) => actions.setError(error.message),
-      });
+      // =========================
+      // WebSocket service
+      // =========================
+      console.log(
+        "DEBUG: Instantiating RealtimeSocketService with URL:",
+        WEBSOCKET_URL,
+      );
+      const socket = new RealtimeSocketService(
+        WEBSOCKET_URL,
+        {
+          onConnect: () => {
+            console.log("✅ WebSocket connected");
+            actions.setConnected(true);
+          },
+          onDisconnect: (reason) => {
+            console.log("❌ WebSocket disconnected:", reason);
+            actions.setConnected(false);
+          },
+          onTranscript: handleRemoteTranscript,
+          onSignDetection: handleSignDetection,
+          onError: (error) => {
+            console.error("⚠️ WebSocket error:", error);
+            actions.setError(error.message);
+          },
+        },
+        {
+          roomId: "default",
+          userId: "yoson", // any string is fine
+        },
+      );
+
       setSocketService(socket);
+      console.log(
+        "DEBUG: Socket service instance stored. Attempting to connect...",
+      );
 
-      // Connect to WebSocket
+      console.log("🔌 Connecting to WebSocket:", WEBSOCKET_URL);
+
       await socket.connect();
+
+      console.log("🎉 initializeServices completed");
     } catch (error) {
+      console.error("❌ initializeServices failed:", error);
       actions.setError((error as Error).message);
     }
   };

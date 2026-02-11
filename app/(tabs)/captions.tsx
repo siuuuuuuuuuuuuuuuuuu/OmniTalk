@@ -551,6 +551,52 @@ export default function CaptionsScreen() {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, []);
 
+  // ── Microphone permission not yet determined ──
+  if (micPermission === null) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.permissionContainer}>
+          <ThemedText style={styles.permissionLoadingText}>
+            Requesting microphone permission...
+          </ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Microphone permission denied ──
+  if (micPermission === false) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.permissionContainer}>
+          <View style={styles.permissionCard}>
+            <ThemedText style={styles.permissionIcon}>
+              {"\uD83C\uDF99\uFE0F"}
+            </ThemedText>
+            <ThemedText style={styles.permissionTitle}>
+              Microphone Access Needed
+            </ThemedText>
+            <ThemedText style={styles.permissionDescription}>
+              We need microphone access to capture speech and generate live
+              captions in real time.
+            </ThemedText>
+            <Pressable
+              style={({ pressed }) => [
+                styles.permissionButton,
+                pressed && styles.permissionButtonPressed,
+              ]}
+              onPress={requestMicPermission}
+            >
+              <ThemedText style={styles.permissionButtonText}>
+                Grant Access
+              </ThemedText>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -563,10 +609,16 @@ export default function CaptionsScreen() {
               {knownSpeakers.length !== 1 ? "s" : ""}
             </ThemedText>
           </View>
-          <View style={styles.liveBadge}>
-            <View style={styles.livePulse} />
-            <ThemedText style={styles.liveLabel}>LIVE</ThemedText>
-          </View>
+          {isRecording ? (
+            <View style={styles.liveBadge}>
+              <View style={styles.livePulse} />
+              <ThemedText style={styles.liveLabel}>LIVE</ThemedText>
+            </View>
+          ) : (
+            <View style={styles.idleBadge}>
+              <ThemedText style={styles.idleLabel}>IDLE</ThemedText>
+            </View>
+          )}
         </View>
 
         {/* ── Sound Radar ── */}
@@ -813,6 +865,122 @@ const styles = StyleSheet.create({
   transcriptList: {
     padding: 16,
     paddingBottom: 24,
+  },
+
+  // Permission
+  permissionContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    padding: 24,
+  },
+  permissionLoadingText: { fontSize: 15, color: "#64748B", fontWeight: "500" },
+  permissionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 32,
+    alignItems: "center",
+    width: "100%" as const,
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  permissionIcon: { fontSize: 48, marginBottom: 16 },
+  permissionTitle: {
+    fontSize: 20,
+    fontWeight: "700" as const,
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  permissionDescription: {
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center" as const,
+    lineHeight: 21,
+    marginBottom: 24,
+  },
+  permissionButton: {
+    backgroundColor: "#2563EB",
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+  },
+  permissionButtonPressed: { opacity: 0.9 },
+  permissionButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700" as const,
+  },
+
+  // Idle badge
+  idleBadge: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  idleLabel: {
+    fontSize: 11,
+    fontWeight: "800" as const,
+    color: "#94A3B8",
+    letterSpacing: 1,
+  },
+
+  // Recording bar
+  recordingBar: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    gap: 14,
+  },
+  recordBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 3,
+    borderColor: "#EF4444",
+    justifyContent: "center" as const,
+    alignItems: "center" as const,
+  },
+  recordBtnActive: { borderColor: "#DC2626" },
+  recordBtnPressed: { opacity: 0.8 },
+  recordBtnInner: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#EF4444",
+  },
+  recordBtnInnerActive: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: "#DC2626",
+  },
+  recordingInfo: {
+    flex: 1,
+  },
+  recordingStatusText: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    color: "#1E293B",
+  },
+  recordingDurationText: {
+    fontSize: 12,
+    fontWeight: "500" as const,
+    color: "#EF4444",
+    marginTop: 2,
   },
 
   // Caption bubbles
