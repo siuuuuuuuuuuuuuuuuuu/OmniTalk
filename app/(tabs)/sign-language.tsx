@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
+import { AccessibilityControls } from '@/components/AccessibilityControls';
 import { ThemedText } from '@/components/themed-text';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useAccessibility } from '@/state/AppContext';
@@ -92,8 +93,9 @@ export default function SignLanguageScreen() {
   const [detectedSigns] = useState(MOCK_DETECTED);
   const cameraRef = useRef<CameraView>(null);
 
-  const { settings } = useAccessibility();
+  const { settings, updateSettings } = useAccessibility();
   const tts = useTextToSpeech({ autoSpeak: false });
+  const [showSettings, setShowSettings] = useState(false);
 
   const fullText = detectedSigns.map(d => d.text).join('. ');
 
@@ -298,6 +300,51 @@ export default function SignLanguageScreen() {
             </Pressable>
           </View>
         </View>
+
+        {/* ── Settings FAB ── */}
+        <Pressable
+          style={styles.settingsFab}
+          onPress={() => setShowSettings(!showSettings)}
+          accessibilityLabel={showSettings ? "Close settings" : "Open accessibility settings"}
+          accessibilityRole="button"
+        >
+          <ThemedText style={styles.settingsFabIcon}>⚙</ThemedText>
+        </Pressable>
+
+        {/* ── Accessibility Settings Modal ── */}
+        {showSettings && (
+          <View
+            style={styles.settingsModal}
+            accessibilityViewIsModal={true}
+            accessibilityLabel="Accessibility settings modal"
+          >
+            <Pressable
+              style={styles.settingsBackdrop}
+              onPress={() => setShowSettings(false)}
+              accessibilityLabel="Close settings"
+              accessibilityRole="button"
+            />
+            <View style={styles.settingsContent}>
+              <View style={styles.settingsHeader}>
+                <ThemedText style={styles.settingsTitle}>Settings</ThemedText>
+                <Pressable
+                  onPress={() => setShowSettings(false)}
+                  style={styles.settingsCloseBtn}
+                  accessibilityLabel="Close settings"
+                  accessibilityRole="button"
+                >
+                  <ThemedText style={styles.settingsCloseBtnText}>✕</ThemedText>
+                </Pressable>
+              </View>
+              <ScrollView style={styles.settingsScroll}>
+                <AccessibilityControls
+                  settings={settings}
+                  onSettingsChange={updateSettings}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -635,4 +682,83 @@ const styles = StyleSheet.create({
   },
   permissionButtonPressed: { opacity: 0.9 },
   permissionButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  // Settings FAB & Modal
+  settingsFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#64748B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  settingsFabIcon: {
+    fontSize: 22,
+    color: '#FFFFFF',
+  },
+  settingsModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    zIndex: 100,
+  },
+  settingsBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  settingsContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  settingsTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  settingsCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsCloseBtnText: {
+    fontSize: 20,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  settingsScroll: {
+    padding: 24,
+  },
 });
