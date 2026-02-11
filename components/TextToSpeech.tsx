@@ -7,12 +7,14 @@
  * Connects to global accessibility settings via useTextToSpeech hook.
  */
 
+import * as Haptics from "expo-haptics";
 import React, { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useTextToSpeech } from "@/hooks/useTextToSpeech";
+import { useAccessibility } from "@/state/AppContext";
 import type { TextToSpeechProps } from "@/types";
 
 export function TextToSpeech({
@@ -22,6 +24,7 @@ export function TextToSpeech({
   onSpeakStart,
   onSpeakEnd,
 }: TextToSpeechProps) {
+  const { settings: accessibilitySettings } = useAccessibility();
   const tts = useTextToSpeech({ autoSpeak });
   const lastSpokenText = useRef<string>("");
 
@@ -95,13 +98,21 @@ export function TextToSpeech({
     }
   }, [tts.isSpeaking, tts.isPaused]);
 
+  const triggerHaptic = () => {
+    if (accessibilitySettings.hapticFeedback && Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
   const handleSpeak = () => {
+    triggerHaptic();
     if (text.trim()) {
       tts.speak(text);
     }
   };
 
   const handlePauseResume = () => {
+    triggerHaptic();
     if (tts.isPaused) {
       tts.resume();
     } else {
@@ -110,6 +121,7 @@ export function TextToSpeech({
   };
 
   const handleReplay = () => {
+    triggerHaptic();
     if (text.trim()) {
       tts.replay(text);
     }
@@ -190,7 +202,7 @@ export function TextToSpeech({
             !tts.isSpeaking && styles.buttonDisabled,
             pressed && tts.isSpeaking && styles.buttonPressed,
           ]}
-          onPress={() => tts.stop()}
+          onPress={() => { triggerHaptic(); tts.stop(); }}
           disabled={!tts.isSpeaking}
           accessibilityLabel="Stop speaking"
           accessibilityRole="button"

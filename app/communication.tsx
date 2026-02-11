@@ -339,29 +339,37 @@ export default function CommunicationScreen() {
         {/* Main Content Area */}
         <View style={styles.mainContent}>
           {/* Live Transcript - Primary Focus */}
-          <View style={styles.transcriptSection}>
-            <View style={styles.transcriptHeader}>
-              <ThemedText style={styles.transcriptTitle}>
-                Live Transcript
+          {settings.captionsEnabled ? (
+            <View style={styles.transcriptSection}>
+              <View style={styles.transcriptHeader}>
+                <ThemedText style={styles.transcriptTitle}>
+                  Live Transcript
+                </ThemedText>
+                {state.session.isRecording && (
+                  <View style={styles.recordingIndicator}>
+                    <View style={styles.recordingPulse} />
+                    <ThemedText style={styles.recordingText}>
+                      Recording
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
+              <View style={styles.transcriptContainer}>
+                <LiveTranscript
+                  segments={segments}
+                  speakers={speakers}
+                  autoScroll={true}
+                  maxSegments={100}
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.captionsDisabledSection}>
+              <ThemedText style={styles.captionsDisabledText}>
+                Captions are disabled. Enable them in Settings.
               </ThemedText>
-              {state.session.isRecording && (
-                <View style={styles.recordingIndicator}>
-                  <View style={styles.recordingPulse} />
-                  <ThemedText style={styles.recordingText}>
-                    Recording
-                  </ThemedText>
-                </View>
-              )}
             </View>
-            <View style={styles.transcriptContainer}>
-              <LiveTranscript
-                segments={segments}
-                speakers={speakers}
-                autoScroll={true}
-                maxSegments={100}
-              />
-            </View>
-          </View>
+          )}
 
           {/* Camera Preview (for sign language) */}
           {settings.signLanguageEnabled && (
@@ -413,13 +421,26 @@ export default function CommunicationScreen() {
 
         {/* Accessibility Settings Panel */}
         {showSettings && (
-          <View style={styles.settingsModal}>
+          <View
+            style={styles.settingsModal}
+            accessibilityViewIsModal={true}
+            accessibilityLabel="Accessibility settings modal"
+          >
+            {/* Backdrop dismiss */}
+            <Pressable
+              style={styles.settingsBackdrop}
+              onPress={() => setShowSettings(false)}
+              accessibilityLabel="Close settings"
+              accessibilityRole="button"
+            />
             <View style={styles.settingsContent}>
               <View style={styles.settingsHeader}>
                 <ThemedText style={styles.settingsTitle}>Settings</ThemedText>
                 <Pressable
                   onPress={() => setShowSettings(false)}
                   style={styles.closeButton}
+                  accessibilityLabel="Close settings"
+                  accessibilityRole="button"
                 >
                   <ThemedText style={styles.closeButtonText}>✕</ThemedText>
                 </Pressable>
@@ -438,6 +459,8 @@ export default function CommunicationScreen() {
         <Pressable
           style={styles.settingsFab}
           onPress={() => setShowSettings(!showSettings)}
+          accessibilityLabel={showSettings ? "Close settings" : "Open accessibility settings"}
+          accessibilityRole="button"
         >
           <ThemedText style={styles.settingsFabIcon}>⚙</ThemedText>
         </Pressable>
@@ -624,6 +647,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
+  settingsBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   settingsContent: {
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
@@ -681,5 +711,21 @@ const styles = StyleSheet.create({
   settingsFabIcon: {
     fontSize: 28,
     color: "#FFFFFF",
+  },
+  captionsDisabledSection: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  captionsDisabledText: {
+    fontSize: 15,
+    color: "#94A3B8",
+    textAlign: "center",
+    fontWeight: "500",
   },
 });
