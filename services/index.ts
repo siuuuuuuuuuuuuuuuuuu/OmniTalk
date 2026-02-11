@@ -4,24 +4,19 @@
  */
 
 export {
-    SpeechToTextService,
-    createSpeechToTextService,
-    useSpeechToTextConfig
+    createSpeechToTextService, SpeechToTextService, useSpeechToTextConfig
 } from "./speechToText";
 export type {
     SpeechToTextCallbacks, SpeechToTextConfig, TranscriptionResult
 } from "./speechToText";
 
 export {
-    SignToTextService,
-    createSignToTextService,
-    getSupportedLanguages
+    createSignToTextService, SignToTextService
 } from "./signToText";
 export type { SignToTextCallbacks, SignToTextConfig } from "./signToText";
 
 export {
-    RealtimeSocketService,
-    createRealtimeSocketService
+    createRealtimeSocketService, RealtimeSocketService
 } from "./RealtimeSocket";
 export type {
     RealtimeSocketCallbacks, RealtimeSocketConfig

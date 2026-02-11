@@ -6,9 +6,16 @@
  * It coordinates audio capture, camera capture, live transcripts, and accessibility features.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, SafeAreaView, StyleSheet, View, ScrollView } from "react-native";
+import Constants from "expo-constants";
 import { router } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 
 import { AccessibilityControls } from "@/components/AccessibilityControls";
 import { AudioCapture } from "@/components/AudioCapture";
@@ -17,18 +24,20 @@ import { LiveTranscript } from "@/components/LiveTranscript";
 import { TextToSpeech } from "@/components/TextToSpeech";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { WEBSOCKET_URL } from "@/constants/api";
 import { RealtimeSocketService } from "@/services/RealtimeSocket";
 import {
-    createSpeechToTextService,
-    SpeechToTextService,
+  createSpeechToTextService,
+  SpeechToTextService
 } from "@/services/speechToText";
 import { useAccessibility, useApp, useTranscript } from "@/state/AppContext";
 import type { SpeakerInfo, TranscriptSegment } from "@/types";
 
 // TODO: Move to environment config
-const DEEPGRAM_API_KEY = process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY || "";
-const WEBSOCKET_URL =
-  process.env.EXPO_PUBLIC_WEBSOCKET_URL || "ws://localhost:8080";
+const DEEPGRAM_API_KEY =
+  Constants.expoConfig?.extra?.deepgramApiKey ||
+  process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY ||
+  "";
 
 export default function CommunicationScreen() {
   const { state, actions } = useApp();
@@ -53,8 +62,13 @@ export default function CommunicationScreen() {
   }, []);
 
   const initializeServices = async () => {
+    console.log("DEBUG: initializeServices started");
     try {
-      // Initialize Speech-to-Text service
+      console.log("Initializing CommunicationScreen");
+
+      // =========================
+      // Speech-to-Text service
+      // =========================
       const stt = createSpeechToTextService(
         DEEPGRAM_API_KEY,
         {
@@ -68,21 +82,53 @@ export default function CommunicationScreen() {
           onClose: () => console.log("STT disconnected"),
         },
       );
+
       setSttService(stt);
+      console.log("DEBUG: STT service initialized");
 
-      // Initialize WebSocket service for real-time communication
-      const socket = new RealtimeSocketService(WEBSOCKET_URL, {
-        onConnect: () => actions.setConnected(true),
-        onDisconnect: () => actions.setConnected(false),
-        onTranscript: handleRemoteTranscript,
-        onSignDetection: handleSignDetection,
-        onError: (error) => actions.setError(error.message),
-      });
+      // =========================
+      // WebSocket service
+      // =========================
+      console.log(
+        "DEBUG: Instantiating RealtimeSocketService with URL:",
+        WEBSOCKET_URL,
+      );
+      const socket = new RealtimeSocketService(
+        WEBSOCKET_URL,
+        {
+          onConnect: () => {
+            console.log("✅ WebSocket connected");
+            actions.setConnected(true);
+          },
+          onDisconnect: (reason) => {
+            console.log("❌ WebSocket disconnected:", reason);
+            actions.setConnected(false);
+          },
+          onTranscript: handleRemoteTranscript,
+          onSignDetection: handleSignDetection,
+          onError: (error) => {
+            console.error("⚠️ WebSocket error:", error);
+            actions.setError(error.message);
+          },
+        },
+        {
+          roomId: "default",
+          userId: "yoson", // any string is fine
+        },
+      );
+
       setSocketService(socket);
+      console.log(
+        "DEBUG: Socket service instance stored. Attempting to connect...",
+      );
 
-      // Connect to WebSocket
+      console.log("🔌 Connecting to WebSocket:", WEBSOCKET_URL);
+
       await socket.connect();
+
+      console.log("🎉 initializeServices completed");
     } catch (error) {
+      console.error("❌ initializeServices failed:", error);
       actions.setError((error as Error).message);
     }
   };
@@ -166,7 +212,7 @@ export default function CommunicationScreen() {
     [addTranscript],
   );
 
-  // Handle audio data from AudioCapture
+  // Handle audio data from AudioCapture (batch mode - native only)
   const handleAudioData = useCallback(
     async (audioBlob: Blob | ArrayBuffer) => {
       if (!sttService) return;
@@ -188,6 +234,34 @@ export default function CommunicationScreen() {
     },
     [sttService, actions],
   );
+
+  // Handle real-time audio chunk (web streaming)
+  const handleAudioChunk = useCallback(
+    (chunk: ArrayBuffer) => {
+      if (!sttService?.connected) return;
+      sttService.sendAudio(chunk);
+    },
+    [sttService],
+  );
+
+  // Handle recording start - connect to Deepgram
+  const handleRecordingStart = useCallback(async () => {
+    if (!sttService) return;
+    try {
+      if (!sttService.connected) {
+        await sttService.connect();
+      }
+    } catch (error) {
+      actions.setError((error as Error).message);
+    }
+  }, [sttService, actions]);
+
+  // Handle recording stop - close the stream
+  const handleRecordingStop = useCallback(() => {
+    if (sttService?.connected) {
+      sttService.finishStream();
+    }
+  }, [sttService]);
 
   // Handle recording status change
   const handleRecordingChange = useCallback(
@@ -267,11 +341,15 @@ export default function CommunicationScreen() {
           {/* Live Transcript - Primary Focus */}
           <View style={styles.transcriptSection}>
             <View style={styles.transcriptHeader}>
-              <ThemedText style={styles.transcriptTitle}>Live Transcript</ThemedText>
+              <ThemedText style={styles.transcriptTitle}>
+                Live Transcript
+              </ThemedText>
               {state.session.isRecording && (
                 <View style={styles.recordingIndicator}>
                   <View style={styles.recordingPulse} />
-                  <ThemedText style={styles.recordingText}>Recording</ThemedText>
+                  <ThemedText style={styles.recordingText}>
+                    Recording
+                  </ThemedText>
                 </View>
               )}
             </View>
@@ -298,6 +376,7 @@ export default function CommunicationScreen() {
                       signs: [result.gesture],
                       confidence: result.confidence,
                       timestamp: result.timestamp,
+                      isFinal: result.isFinal,
                     });
                   }}
                   onError={(error) => actions.setError(error.message)}
@@ -308,14 +387,16 @@ export default function CommunicationScreen() {
         </View>
 
         {/* Controls Area */}
-        <View style={styles.controlsSection}>
-          <View style={styles.controlsCard}>
-            <AudioCapture
-              onAudioData={handleAudioData}
-              onRecordingStatusChange={handleRecordingChange}
-              onError={(error) => actions.setError(error.message)}
-            />
-          </View>
+        <View style={styles.controlsCard}>
+          {/* Audio Capture Control */}
+          <AudioCapture
+            onAudioData={handleAudioData}
+            onAudioChunk={handleAudioChunk}
+            onRecordingStart={handleRecordingStart}
+            onRecordingStop={handleRecordingStop}
+            onRecordingStatusChange={handleRecordingChange}
+            onError={(error) => actions.setError(error.message)}
+          />
         </View>
 
         {/* Text-to-Speech for blind users */}
