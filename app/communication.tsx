@@ -38,8 +38,6 @@ const DEEPGRAM_API_KEY =
   Constants.expoConfig?.extra?.deepgramApiKey ||
   process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY ||
   "";
-const WEBSOCKET_URL =
-  process.env.EXPO_PUBLIC_WEBSOCKET_URL || "ws://localhost:8080";
 
 export default function CommunicationScreen() {
   const { state, actions } = useApp();
@@ -378,6 +376,7 @@ export default function CommunicationScreen() {
                       signs: [result.gesture],
                       confidence: result.confidence,
                       timestamp: result.timestamp,
+                      isFinal: result.isFinal,
                     });
                   }}
                   onError={(error) => actions.setError(error.message)}

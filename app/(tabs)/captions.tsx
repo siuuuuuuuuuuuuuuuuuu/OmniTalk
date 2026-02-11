@@ -345,6 +345,32 @@ export default function CaptionsScreen() {
   const captionIdRef = useRef(1);
   const interimIdRef = useRef(0);
 
+  // Microphone permission state
+  const [micPermission, setMicPermission] = useState<boolean | null>(null);
+
+  // Request microphone permission on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+        setMicPermission(true);
+      } catch {
+        setMicPermission(false);
+      }
+    })();
+  }, []);
+
+  const requestMicPermission = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      setMicPermission(true);
+    } catch {
+      setMicPermission(false);
+    }
+  }, []);
+
   // Sliding window: max number of caption bubbles to keep visible
   const MAX_VISIBLE_CAPTIONS = 50;
 
