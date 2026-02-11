@@ -1,15 +1,18 @@
 /**
- * Speech-to-Text Service with Deepgram SDK
+ * Speech-to-Text Service with Deepgram
  *
  * Handles real-time speech-to-text conversion with speaker diarization.
- * Uses Deepgram's official SDK for streaming audio transcription.
+ * Uses the Deepgram SDK on web and a direct WebSocket connection on native
+ * (React Native) to avoid Node.js-only dependencies like `stream`.
  */
 
-import {
-  createClient,
-  LiveTranscriptionEvents,
-  type LiveClient,
-} from "@deepgram/sdk";
+import { Platform } from "react-native";
+
+// ── SDK imports via platform-specific files ─────────────────────────────────
+// Metro resolves deepgramSdk.web.ts on web (real SDK) and
+// deepgramSdk.native.ts on iOS/Android (null stubs), so the SDK's
+// Node.js-only deps (ws → stream, http, crypto) are never bundled on native.
+import { createClient, LiveTranscriptionEvents } from "./deepgramSdk";
 
 // ============================================
 // Types
@@ -70,8 +73,13 @@ const DEFAULT_CONFIG: Partial<SpeechToTextConfig> = {
 // ============================================
 
 export class SpeechToTextService {
-  private client: ReturnType<typeof createClient> | null = null;
-  private connection: LiveClient | null = null;
+  // SDK-based connection (web)
+  private client: any = null;
+  private sdkConnection: any = null;
+
+  // Raw WebSocket connection (native)
+  private nativeWs: WebSocket | null = null;
+
   private config: SpeechToTextConfig;
   private callbacks: SpeechToTextCallbacks;
   private isConnected = false;
@@ -83,7 +91,10 @@ export class SpeechToTextService {
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.callbacks = callbacks;
-    this.client = createClient(this.config.apiKey);
+
+    if (Platform.OS === "web" && createClient) {
+      this.client = createClient(this.config.apiKey);
+    }
   }
 
   /**
@@ -95,23 +106,25 @@ export class SpeechToTextService {
       return;
     }
 
+    // Clean up any previous connection
+    this.cleanupConnection();
+
+    if (Platform.OS === "web") {
+      return this.connectWeb();
+    } else {
+      return this.connectNative();
+    }
+  }
+
+  // ── Web: use Deepgram SDK ─────────────────────────────────────────────────
+  private connectWeb(): Promise<void> {
     if (!this.client) {
       throw new Error("Deepgram client not initialized");
     }
 
-    // Clean up any previous connection before reconnecting
-    if (this.connection) {
-      try {
-        this.connection.finish();
-      } catch (_) {
-        // ignore cleanup errors
-      }
-      this.connection = null;
-    }
-
     return new Promise((resolve, reject) => {
       try {
-        this.connection = this.client!.listen.live({
+        this.sdkConnection = this.client.listen.live({
           model: this.config.model || "nova-3",
           language: this.config.language || "en",
           smart_format: this.config.smartFormat ?? true,
@@ -123,43 +136,114 @@ export class SpeechToTextService {
           encoding: "linear16",
         });
 
-        this.connection.on(LiveTranscriptionEvents.Open, () => {
+        this.sdkConnection.on(LiveTranscriptionEvents.Open, () => {
           this.isConnected = true;
-
-          // Send keepAlive every 8s to prevent Deepgram's ~10s silence timeout
-          this.clearKeepAlive();
-          this.keepAliveInterval = setInterval(() => {
-            if (this.connection && this.isConnected) {
-              this.connection.keepAlive();
-            }
-          }, 8000);
-
+          this.startKeepAlive();
           this.callbacks.onOpen?.();
           resolve();
         });
 
-        this.connection.on(LiveTranscriptionEvents.Transcript, (data) => {
-          this.handleTranscript(data);
-        });
+        this.sdkConnection.on(
+          LiveTranscriptionEvents.Transcript,
+          (data: any) => {
+            this.handleTranscript(data);
+          },
+        );
 
-        this.connection.on(LiveTranscriptionEvents.SpeechStarted, () => {
+        this.sdkConnection.on(LiveTranscriptionEvents.SpeechStarted, () => {
           this.callbacks.onSpeechStarted?.();
         });
 
-        this.connection.on(LiveTranscriptionEvents.UtteranceEnd, () => {
+        this.sdkConnection.on(LiveTranscriptionEvents.UtteranceEnd, () => {
           this.callbacks.onUtteranceEnd?.();
         });
 
-        this.connection.on(LiveTranscriptionEvents.Close, () => {
+        this.sdkConnection.on(LiveTranscriptionEvents.Close, () => {
           this.isConnected = false;
           this.clearKeepAlive();
           this.callbacks.onClose?.();
         });
 
-        this.connection.on(LiveTranscriptionEvents.Error, (error) => {
+        this.sdkConnection.on(LiveTranscriptionEvents.Error, (error: any) => {
           this.callbacks.onError?.(new Error(String(error)));
           reject(error);
         });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  // ── Native (iOS / Android): direct WebSocket to Deepgram REST-streaming ──
+  private connectNative(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const params = new URLSearchParams({
+          model: this.config.model || "nova-3",
+          language: this.config.language || "en",
+          smart_format: String(this.config.smartFormat ?? true),
+          punctuate: String(this.config.punctuate ?? true),
+          interim_results: String(this.config.interimResults ?? true),
+          diarize: String(this.config.enableDiarization ?? true),
+          sample_rate: String(this.config.sampleRate || 16000),
+          channels: "1",
+          encoding: "linear16",
+        });
+
+        const url = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
+
+        // React Native's WebSocket supports a 3rd arg for headers at runtime,
+        // but the TS types only declare 2 params – cast to bypass.
+        this.nativeWs = new (WebSocket as any)(url, [], {
+          headers: { Authorization: `Token ${this.config.apiKey}` },
+        });
+
+        const ws = this.nativeWs!;
+        ws.binaryType = "arraybuffer";
+
+        ws.onopen = () => {
+          console.log("SpeechToText (native): WebSocket opened");
+          this.isConnected = true;
+          this.startKeepAlive();
+          this.callbacks.onOpen?.();
+          resolve();
+        };
+
+        ws.onmessage = (event: WebSocketMessageEvent) => {
+          try {
+            const data = JSON.parse(
+              typeof event.data === "string"
+                ? event.data
+                : new TextDecoder().decode(event.data),
+            );
+
+            // Map Deepgram JSON message types
+            if (data.type === "Results") {
+              this.handleTranscript(data);
+            } else if (data.type === "SpeechStarted") {
+              this.callbacks.onSpeechStarted?.();
+            } else if (data.type === "UtteranceEnd") {
+              this.callbacks.onUtteranceEnd?.();
+            }
+          } catch (e) {
+            console.warn("SpeechToText (native): failed to parse message", e);
+          }
+        };
+
+        ws.onclose = () => {
+          console.log("SpeechToText (native): WebSocket closed");
+          this.isConnected = false;
+          this.clearKeepAlive();
+          this.callbacks.onClose?.();
+        };
+
+        ws.onerror = (event: Event) => {
+          console.error("SpeechToText (native): WebSocket error", event);
+          this.callbacks.onError?.(
+            new Error("Native WebSocket error: " + String(event)),
+          );
+          reject(event);
+        };
       } catch (error) {
         reject(error);
       }
@@ -218,24 +302,85 @@ export class SpeechToTextService {
     this.callbacks.onTranscript?.(result);
   }
 
+  // ── Helpers shared by both paths ────────────────────────────────────────────
+
+  /**
+   * Start keepAlive pings to prevent Deepgram's ~10 s silence timeout
+   */
+  private startKeepAlive(): void {
+    this.clearKeepAlive();
+    this.keepAliveInterval = setInterval(() => {
+      if (!this.isConnected) return;
+      try {
+        if (Platform.OS === "web" && this.sdkConnection) {
+          this.sdkConnection.keepAlive();
+        } else if (
+          this.nativeWs &&
+          this.nativeWs.readyState === WebSocket.OPEN
+        ) {
+          this.nativeWs.send(JSON.stringify({ type: "KeepAlive" }));
+        }
+      } catch (e) {
+        console.warn("SpeechToText: keepAlive failed", e);
+      }
+    }, 8000);
+  }
+
+  /**
+   * Clear the keepAlive interval
+   */
+  private clearKeepAlive(): void {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
+  }
+
+  /**
+   * Tear down whichever connection is active
+   */
+  private cleanupConnection(): void {
+    this.clearKeepAlive();
+    try {
+      if (Platform.OS === "web" && this.sdkConnection) {
+        this.sdkConnection.finish();
+      } else if (this.nativeWs) {
+        this.nativeWs.close();
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    this.sdkConnection = null;
+    this.nativeWs = null;
+    this.isConnected = false;
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────────
+
   /**
    * Send audio data to Deepgram for transcription
    */
   sendAudio(audioData: ArrayBuffer | Uint8Array | Blob): void {
-    if (!this.isConnected || !this.connection) {
+    if (!this.isConnected) {
       console.warn("SpeechToText: Not connected");
       return;
     }
 
+    const send = (payload: ArrayBuffer | Blob) => {
+      if (Platform.OS === "web" && this.sdkConnection) {
+        this.sdkConnection.send(payload);
+      } else if (this.nativeWs && this.nativeWs.readyState === WebSocket.OPEN) {
+        this.nativeWs.send(payload);
+      }
+    };
+
     if (audioData instanceof Blob) {
-      // Send Blob directly
-      this.connection.send(audioData);
+      send(audioData);
     } else if (audioData instanceof ArrayBuffer) {
-      // Send ArrayBuffer directly
-      this.connection.send(audioData);
+      send(audioData);
     } else {
-      // Uint8Array - get underlying ArrayBuffer
-      this.connection.send(audioData.buffer as ArrayBuffer);
+      // Uint8Array – get underlying ArrayBuffer
+      send(audioData.buffer as ArrayBuffer);
     }
   }
 
@@ -248,9 +393,7 @@ export class SpeechToTextService {
 
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
       const chunk = uint8Array.slice(i, i + chunkSize);
-      // Send the chunk's underlying ArrayBuffer
-      this.connection?.send(chunk.buffer as ArrayBuffer);
-
+      this.sendAudio(chunk);
       // Small delay to prevent overwhelming the connection
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -260,30 +403,14 @@ export class SpeechToTextService {
    * Signal end of audio stream
    */
   finishStream(): void {
-    // Send empty ArrayBuffer to signal end
-    this.connection?.send(new ArrayBuffer(0));
+    this.sendAudio(new ArrayBuffer(0));
   }
 
   /**
    * Disconnect from Deepgram
    */
   disconnect(): void {
-    this.clearKeepAlive();
-    if (this.connection) {
-      this.connection.finish();
-      this.connection = null;
-    }
-    this.isConnected = false;
-  }
-
-  /**
-   * Clear the keepAlive interval
-   */
-  private clearKeepAlive(): void {
-    if (this.keepAliveInterval) {
-      clearInterval(this.keepAliveInterval);
-      this.keepAliveInterval = null;
-    }
+    this.cleanupConnection();
   }
 
   /**
