@@ -8,8 +8,9 @@ import {
   View,
 } from 'react-native';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
-import * as Speech from 'expo-speech';
 import { ThemedText } from '@/components/themed-text';
+import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useAccessibility } from '@/state/AppContext';
 
 // ─── Mock detected signs (static demo data) ─────────────────────────────────
 const MOCK_DETECTED: { id: string; text: string; timestamp: number }[] = [
@@ -57,8 +58,10 @@ export default function SignLanguageScreen() {
   const [facing, setFacing] = useState<CameraType>('front');
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectedSigns] = useState(MOCK_DETECTED);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+
+  const { settings } = useAccessibility();
+  const tts = useTextToSpeech({ autoSpeak: false });
 
   const fullText = detectedSigns.map(d => d.text).join('. ');
 
@@ -73,28 +76,28 @@ export default function SignLanguageScreen() {
   const speakText = useCallback(async () => {
     if (!fullText.trim()) return;
 
-    const speaking = await Speech.isSpeakingAsync();
-    if (speaking) {
-      await Speech.stop();
-      setIsSpeaking(false);
+    if (tts.isSpeaking) {
+      await tts.stop();
       return;
     }
 
-    setIsSpeaking(true);
-    Speech.speak(fullText, {
-      rate: 0.9,
-      pitch: 1.0,
-      language: 'en-US',
-      onDone: () => setIsSpeaking(false),
-      onStopped: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
-  }, [fullText]);
+    tts.speak(fullText);
+  }, [fullText, tts]);
 
   const clearText = useCallback(() => {
-    Speech.stop();
-    setIsSpeaking(false);
-  }, []);
+    tts.stop();
+  }, [tts]);
+
+  // Auto-read new detections when TTS is enabled
+  const lastReadId = useRef<string>('');
+  useEffect(() => {
+    if (!settings.ttsEnabled || detectedSigns.length === 0) return;
+    const latest = detectedSigns[detectedSigns.length - 1];
+    if (latest.id !== lastReadId.current) {
+      lastReadId.current = latest.id;
+      tts.speakSegment(latest.text, 'Sign Language');
+    }
+  }, [detectedSigns, settings.ttsEnabled]);
 
   // ── Permission states ──
   if (!permission) {
@@ -202,6 +205,14 @@ export default function SignLanguageScreen() {
             </ThemedText>
           </View>
 
+          {/* TTS status bar when active */}
+          {settings.ttsEnabled && tts.isSpeaking && (
+            <View style={styles.ttsStatusBar}>
+              <ThemedText style={styles.ttsStatusIcon}>{'\uD83D\uDD0A'}</ThemedText>
+              <ThemedText style={styles.ttsStatusText}>Reading detected signs aloud...</ThemedText>
+            </View>
+          )}
+
           <ScrollView
             style={styles.transcriptScroll}
             contentContainerStyle={styles.transcriptList}
@@ -230,16 +241,16 @@ export default function SignLanguageScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.speakBtn,
-                isSpeaking && styles.speakBtnActive,
+                tts.isSpeaking && styles.speakBtnActive,
                 pressed && styles.speakBtnPressed,
               ]}
               onPress={speakText}
             >
               <ThemedText style={styles.speakBtnIcon}>
-                {isSpeaking ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
+                {tts.isSpeaking ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
               </ThemedText>
-              <ThemedText style={[styles.speakBtnText, isSpeaking && styles.speakBtnTextActive]}>
-                {isSpeaking ? 'Stop' : 'Speak All'}
+              <ThemedText style={[styles.speakBtnText, tts.isSpeaking && styles.speakBtnTextActive]}>
+                {tts.isSpeaking ? 'Stop' : 'Speak All'}
               </ThemedText>
             </Pressable>
 
@@ -413,6 +424,24 @@ const styles = StyleSheet.create({
   },
   transcriptTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   transcriptCount: { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
+
+  // TTS status bar
+  ttsStatusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: '#EFF6FF',
+    gap: 8,
+  },
+  ttsStatusIcon: {
+    fontSize: 14,
+  },
+  ttsStatusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#3B82F6',
+  },
 
   transcriptScroll: { flex: 1 },
   transcriptList: {

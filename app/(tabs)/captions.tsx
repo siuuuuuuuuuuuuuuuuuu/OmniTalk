@@ -2,11 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
+  Pressable,
   SafeAreaView,
   StyleSheet,
   View,
 } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
+import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useAccessibility } from '@/state/AppContext';
 
 // ─── Speaker color palette (supports up to 15 distinct speakers) ────────────
 const SPEAKER_COLORS = [
@@ -258,17 +261,82 @@ function CaptionBubble({ item, isLatest }: { item: Caption; isLatest: boolean })
   );
 }
 
+// ─── TTS Controls Inline ────────────────────────────────────────────────────
+function TTSControls({ tts, fullText }: { tts: ReturnType<typeof useTextToSpeech>; fullText: string }) {
+  return (
+    <View style={styles.ttsBar}>
+      <View style={styles.ttsInfo}>
+        <ThemedText style={styles.ttsIcon}>
+          {tts.isSpeaking ? '\uD83D\uDD0A' : '\uD83D\uDD08'}
+        </ThemedText>
+        <View>
+          <ThemedText style={styles.ttsLabel}>
+            {tts.isEnabled ? 'TTS Active' : 'TTS Off'}
+          </ThemedText>
+          {tts.isSpeaking && (
+            <ThemedText style={styles.ttsStatus}>Reading captions aloud...</ThemedText>
+          )}
+        </View>
+      </View>
+      <View style={styles.ttsActions}>
+        {tts.isSpeaking ? (
+          <Pressable
+            style={({ pressed }) => [styles.ttsButton, styles.ttsStopBtn, pressed && styles.ttsBtnPressed]}
+            onPress={() => tts.stop()}
+            accessibilityLabel="Stop reading"
+            accessibilityRole="button"
+          >
+            <ThemedText style={styles.ttsBtnText}>Stop</ThemedText>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [
+              styles.ttsButton,
+              styles.ttsPlayBtn,
+              !tts.isEnabled && styles.ttsBtnDisabled,
+              pressed && tts.isEnabled && styles.ttsBtnPressed,
+            ]}
+            onPress={() => tts.speak(fullText)}
+            disabled={!tts.isEnabled}
+            accessibilityLabel="Read all captions"
+            accessibilityRole="button"
+          >
+            <ThemedText style={styles.ttsBtnText}>Read All</ThemedText>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+}
+
 // ─── Main Screen ────────────────────────────────────────────────────────────
 export default function CaptionsScreen() {
   const listRef = useRef<FlatList>(null);
   const allCaptions = [...INITIAL_CAPTIONS, ...QUEUED_CAPTIONS.map(c => ({ ...c, timestamp: Date.now() }))];
   const [captions] = useState<Caption[]>(allCaptions);
   const [activeSpeakerIndex] = useState(allCaptions[allCaptions.length - 1].speakerIndex);
+  const { settings } = useAccessibility();
+
+  // TTS integration — auto-reads new captions for blind users
+  const tts = useTextToSpeech({ autoSpeak: false, announceSpeakers: true });
+  const lastReadCaptionId = useRef<string>('');
+
+  // Auto-read the latest caption when TTS is enabled
+  useEffect(() => {
+    if (!settings.ttsEnabled || captions.length === 0) return;
+    const latest = captions[captions.length - 1];
+    if (latest.id !== lastReadCaptionId.current) {
+      lastReadCaptionId.current = latest.id;
+      tts.speakSegment(latest.text, latest.speaker);
+    }
+  }, [captions, settings.ttsEnabled]);
 
   // Scroll to bottom on new caption
   const handleContentSizeChange = useCallback(() => {
     listRef.current?.scrollToEnd({ animated: true });
   }, []);
+
+  const fullText = captions.map(c => `${c.speaker}: ${c.text}`).join('. ');
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -287,6 +355,11 @@ export default function CaptionsScreen() {
 
         {/* ── Sound Radar ── */}
         <SoundRadar activeSpeakerIndex={activeSpeakerIndex} />
+
+        {/* ── TTS Controls (for blind users) ── */}
+        {settings.ttsEnabled && (
+          <TTSControls tts={tts} fullText={fullText} />
+        )}
 
         {/* ── Transcript ── */}
         <View style={styles.transcriptSection}>
@@ -432,6 +505,63 @@ const styles = StyleSheet.create({
   activeDot: { width: 8, height: 8, borderRadius: 4 },
   activeSpeakerText: { fontSize: 14, fontWeight: '500', color: '#64748B' },
   activeSpeakerName: { fontWeight: '700' },
+
+  // TTS Controls
+  ttsBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#EFF6FF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#BFDBFE',
+  },
+  ttsInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  ttsIcon: {
+    fontSize: 20,
+  },
+  ttsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E40AF',
+  },
+  ttsStatus: {
+    fontSize: 11,
+    color: '#3B82F6',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  ttsActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ttsButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  ttsPlayBtn: {
+    backgroundColor: '#2563EB',
+  },
+  ttsStopBtn: {
+    backgroundColor: '#DC2626',
+  },
+  ttsBtnDisabled: {
+    opacity: 0.4,
+  },
+  ttsBtnPressed: {
+    opacity: 0.8,
+  },
+  ttsBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
 
   // Transcript
   transcriptSection: {
