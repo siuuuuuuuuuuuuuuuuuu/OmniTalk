@@ -170,4 +170,6 @@ export interface CameraCaptureProps {
   onSignDetected?: (result: SignDetectionResult) => void;
   onError?: (error: Error) => void;
   isActive?: boolean;
+  targetFps?: number;
+  isConnected?: boolean;
 }

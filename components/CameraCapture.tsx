@@ -3,8 +3,10 @@
  * Person 4: Camera Capture
  *
  * Handles camera input and captures video frames for sign language translation.
- * Frames are emitted via onFrame for downstream processing (e.g. signToText service).
+ * Frames are emitted via onFrame for downstream processing (signToText service).
  * Uses expo-camera for cross-platform camera access.
+ *
+ * Respects accessibility settings (high contrast, font size) from AppContext.
  */
 
 import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
@@ -13,31 +15,39 @@ import { Animated, Pressable, StyleSheet, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import type { CameraCaptureProps, SignDetectionResult } from "@/types";
+import { useAccessibility } from "@/state/AppContext";
+import type { CameraCaptureProps } from "@/types";
 
-// Frame capture interval in milliseconds
-const FRAME_CAPTURE_INTERVAL = 100; // 10 FPS for sign detection
-const FRAME_QUALITY = 0.5; // Lower quality for faster streaming
+// Defaults — targetFps can be overridden via prop to match signToText config
+const DEFAULT_TARGET_FPS = 15;
+const FRAME_QUALITY = 0.5;
 
 export function CameraCapture({
   onFrame,
   onSignDetected,
   onError,
   isActive = true,
+  targetFps = DEFAULT_TARGET_FPS,
+  isConnected = false,
 }: CameraCaptureProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>("front");
   const [isCapturing, setIsCapturing] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
+  const [currentFps, setCurrentFps] = useState(0);
+
+  const { settings } = useAccessibility();
+  const highContrast = settings.highContrast;
 
   const cameraRef = useRef<CameraView>(null);
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const frameCountRef = useRef(0);
+  const fpsCounterRef = useRef(0);
+  const fpsIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Animated pulse for the recording dot
+  // Animated pulse for recording indicator
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Start pulse animation when capturing
   useEffect(() => {
     if (isCapturing) {
       const pulse = Animated.loop(
@@ -81,24 +91,46 @@ export function CameraCapture({
     };
   }, [isActive, permission?.granted]);
 
+  // Reconfigure interval when targetFps changes
+  useEffect(() => {
+    if (isCapturing) {
+      stopCapturing();
+      startCapturing();
+    }
+  }, [targetFps]);
+
   const startCapturing = useCallback(() => {
     if (captureIntervalRef.current) return;
 
     setIsCapturing(true);
     frameCountRef.current = 0;
+    fpsCounterRef.current = 0;
     setFrameCount(0);
+    setCurrentFps(0);
 
+    const interval = Math.round(1000 / targetFps);
     captureIntervalRef.current = setInterval(async () => {
       await captureFrame();
-    }, FRAME_CAPTURE_INTERVAL);
-  }, []);
+    }, interval);
+
+    // FPS counter — update once per second
+    fpsIntervalRef.current = setInterval(() => {
+      setCurrentFps(fpsCounterRef.current);
+      fpsCounterRef.current = 0;
+    }, 1000);
+  }, [targetFps]);
 
   const stopCapturing = useCallback(() => {
     if (captureIntervalRef.current) {
       clearInterval(captureIntervalRef.current);
       captureIntervalRef.current = null;
     }
+    if (fpsIntervalRef.current) {
+      clearInterval(fpsIntervalRef.current);
+      fpsIntervalRef.current = null;
+    }
     setIsCapturing(false);
+    setCurrentFps(0);
   }, []);
 
   const captureFrame = useCallback(async () => {
@@ -113,13 +145,13 @@ export function CameraCapture({
 
       if (photo?.base64) {
         frameCountRef.current += 1;
+        fpsCounterRef.current += 1;
         setFrameCount(frameCountRef.current);
 
         // Emit frame for downstream sign detection processing
         onFrame?.(photo.base64);
       }
     } catch (error) {
-      // Only report significant errors, ignore rapid-capture glitches
       if ((error as Error).message?.includes("permission")) {
         onError?.(error as Error);
         stopCapturing();
@@ -131,10 +163,12 @@ export function CameraCapture({
     setFacing((current) => (current === "back" ? "front" : "back"));
   }, []);
 
-  // Permission not determined yet
+  // ── Permission not determined ──
   if (!permission) {
     return (
-      <ThemedView style={styles.container}>
+      <ThemedView
+        style={[styles.container, highContrast && styles.containerHighContrast]}
+      >
         <View style={styles.centeredMessage}>
           <ThemedText style={styles.messageText}>
             Requesting camera permission...
@@ -144,10 +178,12 @@ export function CameraCapture({
     );
   }
 
-  // Permission denied
+  // ── Permission denied ──
   if (!permission.granted) {
     return (
-      <ThemedView style={styles.container}>
+      <ThemedView
+        style={[styles.container, highContrast && styles.containerHighContrast]}
+      >
         <View style={styles.centeredMessage}>
           <ThemedText style={styles.errorText}>
             Camera permission is required for sign language detection
@@ -168,10 +204,12 @@ export function CameraCapture({
     );
   }
 
-  // Camera not active
+  // ── Camera inactive ──
   if (!isActive) {
     return (
-      <ThemedView style={styles.container}>
+      <ThemedView
+        style={[styles.container, highContrast && styles.containerHighContrast]}
+      >
         <View style={styles.inactiveOverlay}>
           <ThemedText style={styles.inactiveIcon}>{"\uD83D\uDCF7"}</ThemedText>
           <ThemedText style={styles.inactiveText}>Camera paused</ThemedText>
@@ -184,35 +222,57 @@ export function CameraCapture({
   }
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[styles.container, highContrast && styles.containerHighContrast]}
+    >
       <CameraView ref={cameraRef} style={styles.camera} facing={facing}>
         <View style={styles.overlay}>
-          {/* Top bar: status indicator + frame counter */}
+          {/* Top bar: facing badge + status */}
           <View style={styles.statusBar}>
             <View style={styles.facingBadge}>
               <ThemedText style={styles.facingText}>
                 {facing === "front" ? "Front" : "Back"}
               </ThemedText>
             </View>
-            {isCapturing && (
-              <View style={styles.recordingIndicator}>
-                <Animated.View
-                  style={[styles.recordingDot, { opacity: pulseAnim }]}
+            <View style={styles.statusRight}>
+              {/* Connection indicator */}
+              <View
+                style={[
+                  styles.connectionBadge,
+                  isConnected
+                    ? styles.connectionBadgeConnected
+                    : styles.connectionBadgeDisconnected,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.connectionDot,
+                    isConnected
+                      ? styles.connectionDotConnected
+                      : styles.connectionDotDisconnected,
+                  ]}
                 />
-                <ThemedText style={styles.recordingText}>
-                  Capturing
-                </ThemedText>
-                <ThemedText style={styles.frameCountText}>
-                  {frameCount} frames
+                <ThemedText style={styles.connectionText}>
+                  {isConnected ? "Live" : "Offline"}
                 </ThemedText>
               </View>
-            )}
+              {/* Capture indicator */}
+              {isCapturing && (
+                <View style={styles.recordingIndicator}>
+                  <Animated.View
+                    style={[styles.recordingDot, { opacity: pulseAnim }]}
+                  />
+                  <ThemedText style={styles.recordingText}>
+                    {currentFps > 0 ? `${currentFps} fps` : "Starting..."}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
           </View>
 
-          {/* Hand detection guide */}
+          {/* Hand positioning guide */}
           <View style={styles.handGuide}>
             <View style={styles.handGuideFrame}>
-              {/* Corner markers for the guide box */}
               <View style={[styles.cornerMark, styles.cornerTopLeft]} />
               <View style={[styles.cornerMark, styles.cornerTopRight]} />
               <View style={[styles.cornerMark, styles.cornerBottomLeft]} />
@@ -260,8 +320,13 @@ export function CameraCapture({
               />
             </Pressable>
 
-            {/* Placeholder for symmetry */}
-            <View style={styles.controlButtonPlaceholder} />
+            {/* Frame counter */}
+            <View style={styles.frameCountBadge}>
+              <ThemedText style={styles.frameCountNumber}>
+                {frameCount}
+              </ThemedText>
+              <ThemedText style={styles.frameCountLabel}>frames</ThemedText>
+            </View>
           </View>
         </View>
       </CameraView>
@@ -276,13 +341,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
   },
+  containerHighContrast: {
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
   camera: {
     flex: 1,
   },
   overlay: {
     flex: 1,
     justifyContent: "space-between",
-    padding: 16,
+    padding: 14,
   },
 
   // Status bar
@@ -290,6 +359,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  statusRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   facingBadge: {
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -302,14 +376,48 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
+
+  // Connection status
+  connectionBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 6,
+  },
+  connectionBadgeConnected: {
+    backgroundColor: "rgba(5, 150, 105, 0.6)",
+  },
+  connectionBadgeDisconnected: {
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  connectionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  connectionDotConnected: {
+    backgroundColor: "#34D399",
+  },
+  connectionDotDisconnected: {
+    backgroundColor: "#94A3B8",
+  },
+  connectionText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  // Recording indicator
   recordingIndicator: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 6,
   },
   recordingDot: {
     width: 8,
@@ -319,13 +427,8 @@ const styles = StyleSheet.create({
   },
   recordingText: {
     color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  frameCountText: {
-    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 10,
-    fontWeight: "500",
+    fontWeight: "600",
   },
 
   // Hand guide
@@ -335,24 +438,24 @@ const styles = StyleSheet.create({
   },
   handGuideFrame: {
     width: 200,
-    height: 200,
+    height: 160,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.25)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 20,
   },
   handGuideText: {
-    color: "rgba(255, 255, 255, 0.6)",
+    color: "rgba(255, 255, 255, 0.55)",
     fontSize: 12,
-    marginTop: 12,
+    marginTop: 10,
     fontWeight: "500",
   },
 
-  // Corner markers for the guide frame
+  // Corner markers
   cornerMark: {
     position: "absolute",
     width: 24,
     height: 24,
-    borderColor: "rgba(255, 255, 255, 0.7)",
+    borderColor: "rgba(255, 255, 255, 0.65)",
   },
   cornerTopLeft: {
     top: -1,
@@ -404,14 +507,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "#FFFFFF",
   },
-  controlButtonPlaceholder: {
-    width: 44,
-    height: 44,
-  },
   captureButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     borderWidth: 4,
     borderColor: "#FFFFFF",
     justifyContent: "center",
@@ -419,19 +518,38 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   captureButtonActive: {
-    borderColor: "#50C878",
+    borderColor: "#34D399",
   },
   captureButtonInner: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "#FFFFFF",
   },
   captureButtonInnerActive: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: 4,
-    backgroundColor: "#50C878",
+    backgroundColor: "#34D399",
+  },
+
+  // Frame counter badge
+  frameCountBadge: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 44,
+    height: 44,
+  },
+  frameCountNumber: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  frameCountLabel: {
+    color: "rgba(255, 255, 255, 0.5)",
+    fontSize: 8,
+    fontWeight: "600",
+    marginTop: -2,
   },
 
   // Inactive / Permission states
@@ -474,7 +592,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   permissionButton: {
-    backgroundColor: "#4A90D9",
+    backgroundColor: "#059669",
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 12,
