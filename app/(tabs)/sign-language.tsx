@@ -7,11 +7,15 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import { AccessibilityControls } from '@/components/AccessibilityControls';
+import { CameraCapture } from '@/components/CameraCapture';
 import { ThemedText } from '@/components/themed-text';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useAccessibility } from '@/state/AppContext';
+import type { SignDetectionResult, SignToTextResult } from '@/types';
+
+// Backend URL for sign language detection
+const SIGN_BACKEND_URL = process.env.EXPO_PUBLIC_SIGN_BACKEND_URL || "ws://localhost:8080/ws";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type DetectedSign = {
@@ -89,11 +93,8 @@ function DetectedItem({
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function SignLanguageScreen() {
-  const [permission, requestPermission] = useCameraPermissions();
-  const [facing, setFacing] = useState<CameraType>('front');
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectedSigns, setDetectedSigns] = useState(INITIAL_DETECTED);
-  const cameraRef = useRef<CameraView>(null);
 
   const { settings, updateSettings } = useAccessibility();
   const tts = useTextToSpeech({ autoSpeak: false });
@@ -101,12 +102,49 @@ export default function SignLanguageScreen() {
 
   const fullText = detectedSigns.map(d => d.text).join('. ');
 
-  const toggleDetection = useCallback(() => {
-    setIsDetecting(prev => !prev);
+  // Handle sign detection results
+  const handleSignDetected = useCallback((result: SignDetectionResult) => {
+    if (!result.gesture || result.confidence < 0.7) return;
+
+    console.log('Sign detected:', result.gesture, 'confidence:', result.confidence);
+
+    // Don't add duplicate consecutive gestures
+    setDetectedSigns(prev => {
+      const lastSign = prev[prev.length - 1];
+      if (lastSign && lastSign.text.toLowerCase() === result.gesture.toLowerCase()) {
+        return prev;
+      }
+
+      const newSign: DetectedSign = {
+        id: `sign-${Date.now()}-${Math.random()}`,
+        text: result.gesture.replace('asl_', '').toUpperCase(),
+        timestamp: result.timestamp || Date.now(),
+      };
+
+      return [...prev, newSign];
+    });
   }, []);
 
-  const toggleFacing = useCallback(() => {
-    setFacing(current => (current === 'back' ? 'front' : 'back'));
+  // Handle text result (full sentence/phrase)
+  const handleTextResult = useCallback((result: SignToTextResult) => {
+    console.log('Text result:', result.text);
+
+    const newSign: DetectedSign = {
+      id: `text-${Date.now()}-${Math.random()}`,
+      text: result.text,
+      timestamp: result.timestamp,
+    };
+
+    setDetectedSigns(prev => [...prev, newSign]);
+  }, []);
+
+  // Handle errors
+  const handleError = useCallback((error: Error) => {
+    console.error('Sign detection error:', error);
+  }, []);
+
+  const toggleDetection = useCallback(() => {
+    setIsDetecting(prev => !prev);
   }, []);
 
   const speakText = useCallback(async () => {
@@ -136,38 +174,6 @@ export default function SignLanguageScreen() {
     }
   }, [detectedSigns, settings.ttsEnabled]);
 
-  // ── Permission states ──
-  if (!permission) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.permissionContainer}>
-          <ThemedText style={styles.permissionText}>Requesting camera permission...</ThemedText>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.permissionContainer}>
-          <View style={styles.permissionCard}>
-            <ThemedText style={styles.permissionIcon}>{'\uD83D\uDCF7'}</ThemedText>
-            <ThemedText style={styles.permissionTitle}>Camera Access Needed</ThemedText>
-            <ThemedText style={styles.permissionDescription}>
-              We need camera access to detect sign language gestures and convert them to text.
-            </ThemedText>
-            <Pressable
-              style={({ pressed }) => [styles.permissionButton, pressed && styles.permissionButtonPressed]}
-              onPress={requestPermission}
-            >
-              <ThemedText style={styles.permissionButtonText}>Grant Access</ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   const accessibleFontSize = getAccessibleFontSize(settings.fontSize);
 
@@ -191,47 +197,34 @@ export default function SignLanguageScreen() {
         {/* ── Camera Section ── */}
         <View style={styles.cameraSection}>
           <View style={styles.cameraWrapper}>
-            <CameraView ref={cameraRef} style={styles.camera} facing={facing}>
-              {/* Overlay */}
-              <View style={styles.cameraOverlay}>
-                {/* Detection status */}
-                {isDetecting && (
-                  <View style={styles.detectingBanner}>
-                    <View style={styles.detectingPulse} />
-                    <ThemedText style={styles.detectingText}>Detecting signs...</ThemedText>
-                  </View>
-                )}
+            <CameraCapture
+              isActive={isDetecting}
+              backendUrl={SIGN_BACKEND_URL}
+              signLanguage="ASL"
+              confidenceThreshold={0.7}
+              onSignDetected={handleSignDetected}
+              onTextResult={handleTextResult}
+              onError={handleError}
+            />
+          </View>
 
-                {/* Hand guide */}
-                <View style={styles.handGuide}>
-                  <View style={styles.handGuideFrame} />
-                  <ThemedText style={styles.handGuideText}>Position hands here</ThemedText>
-                </View>
-
-                {/* Camera controls */}
-                <View style={styles.cameraControls}>
-                  <Pressable
-                    style={({ pressed }) => [styles.cameraBtn, pressed && styles.cameraBtnPressed]}
-                    onPress={toggleFacing}
-                  >
-                    <ThemedText style={styles.cameraBtnText}>{'\uD83D\uDD04'}</ThemedText>
-                  </Pressable>
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.detectBtn,
-                      isDetecting && styles.detectBtnActive,
-                      pressed && styles.detectBtnPressed,
-                    ]}
-                    onPress={toggleDetection}
-                  >
-                    <View style={[styles.detectBtnInner, isDetecting && styles.detectBtnInnerActive]} />
-                  </Pressable>
-
-                  <View style={styles.cameraBtnPlaceholder} />
-                </View>
-              </View>
-            </CameraView>
+          {/* Detection Toggle */}
+          <View style={styles.cameraControlsBar}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.toggleDetectBtn,
+                isDetecting && styles.toggleDetectBtnActive,
+                pressed && styles.toggleDetectBtnPressed,
+              ]}
+              onPress={toggleDetection}
+            >
+              <ThemedText style={styles.toggleDetectBtnIcon}>
+                {isDetecting ? '⏸' : '▶'}
+              </ThemedText>
+              <ThemedText style={[styles.toggleDetectBtnText, isDetecting && styles.toggleDetectBtnTextActive]}>
+                {isDetecting ? 'Stop Detection' : 'Start Detection'}
+              </ThemedText>
+            </Pressable>
           </View>
         </View>
 
@@ -387,106 +380,58 @@ const styles = StyleSheet.create({
   // Camera
   cameraSection: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
   cameraWrapper: {
-    height: 280,
+    height: 320,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#000000',
   },
-  camera: {
-    flex: 1,
-  },
-  cameraOverlay: {
-    flex: 1,
-    justifyContent: 'space-between',
-    padding: 14,
-  },
 
-  detectingBanner: {
+  // Camera controls bar
+  cameraControlsBar: {
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  toggleDetectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 8,
+    justifyContent: 'center',
+    backgroundColor: '#059669',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 10,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  detectingPulse: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#34D399',
+  toggleDetectBtnActive: {
+    backgroundColor: '#DC2626',
+    shadowColor: '#DC2626',
   },
-  detectingText: {
+  toggleDetectBtnPressed: {
+    opacity: 0.9,
+  },
+  toggleDetectBtnIcon: {
+    fontSize: 18,
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
   },
-
-  handGuide: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  toggleDetectBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
-  handGuideFrame: {
-    width: 180,
-    height: 140,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.35)',
-    borderRadius: 20,
-    borderStyle: 'dashed',
-  },
-  handGuideText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 12,
-    marginTop: 8,
-    fontWeight: '500',
-  },
-
-  cameraControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  cameraBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cameraBtnPressed: { backgroundColor: 'rgba(255, 255, 255, 0.35)' },
-  cameraBtnText: { fontSize: 18 },
-  cameraBtnPlaceholder: { width: 42, height: 42 },
-
-  detectBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  detectBtnActive: { borderColor: '#34D399' },
-  detectBtnPressed: { opacity: 0.8 },
-  detectBtnInner: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-  },
-  detectBtnInnerActive: {
-    width: 28,
-    height: 28,
-    borderRadius: 4,
-    backgroundColor: '#34D399',
+  toggleDetectBtnTextActive: {
+    color: '#FFFFFF',
   },
 
   // Transcript
@@ -628,47 +573,6 @@ const styles = StyleSheet.create({
   settingsBtnPressed: { backgroundColor: '#475569' },
   settingsBtnIcon: { fontSize: 20, color: '#FFFFFF' },
 
-  // Permission
-  permissionContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    padding: 24,
-  },
-  permissionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 32,
-    alignItems: 'center',
-    width: '100%',
-    maxWidth: 340,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  permissionIcon: { fontSize: 48, marginBottom: 16 },
-  permissionTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A', marginBottom: 8 },
-  permissionText: { fontSize: 15, color: '#64748B', fontWeight: '500' },
-  permissionDescription: {
-    fontSize: 14,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 24,
-  },
-  permissionButton: {
-    backgroundColor: '#059669',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-  },
-  permissionButtonPressed: { opacity: 0.9 },
-  permissionButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
   // Settings Modal
   settingsModal: {
