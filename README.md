@@ -1,50 +1,104 @@
-# Welcome to your Expo app 👋
+# OmniTalk
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+OmniTalk is an accessibility-first communication app designed for live, in-person meetings. It helps people who are deaf, mute, and blind communicate with each other more naturally through real-time assistive features, so conversations stay inclusive, clear, and easy to follow for everyone in the room.
 
-## Get started
+## Features
 
-1. Install dependencies
+- Speech to Text: Converts spoken conversation into live captions so deaf and hard-of-hearing users can follow discussions in real time.
+- Sign to Speech: Translates signed input into spoken output to help bridge communication with people who rely on audio.
 
-   ```bash
-   npm install
-   ```
+## Quick Start (Frontend Only)
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+1. Install dependencies:
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+2. Create env file:
 
-## Learn more
+```bash
+copy .env.example .env
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+3. Set your Deepgram key in `.env`:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```env
+EXPO_PUBLIC_DEEPGRAM_API_KEY=your_actual_key_here
+```
 
-## Join the community
+4. Start Expo:
 
-Join our community of developers creating universal apps.
+```bash
+npx expo start
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+You can also use:
+
+```bash
+npm run start
+```
+
+Both start the same Expo dev server.
+
+## Optional Backend (If Needed)
+
+Use this if you want backend APIs/websocket routes enabled.
+
+1. Go to backend folder:
+
+```bash
+cd backend
+```
+
+2. Install Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Start the FastAPI server:
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+4. Update backend URLs in `constants/api.ts`:
+
+- Set `WEBSOCKET_URL` to `ws://<your-ip-address>:8000/ws`
+- Set `API_URL` to `http://<your-ip-address>:8000`
+
+5. Check it is running:
+
+- `http://<your-ip-address>:8000/`
+- `http://<your-ip-address>:8000/health`
+
+## Backend URL/IP Setup
+
+This project currently hardcodes backend URLs in `constants/api.ts`.
+
+- `WEBSOCKET_URL`
+- `API_URL`
+
+If you are a different user or running on a different machine, update these to your own backend host.
+
+Quick rule:
+- If frontend and backend run on the same computer (web/simulator), `localhost` may work.
+- If testing on a physical phone, use your computer's LAN IP on the same Wi-Fi (not `localhost`).
+
+## Useful Commands
+
+- Start: `npx expo start`
+- Android: `npm run android`
+- iOS: `npm run ios`
+- Web: `npm run web`
+- Lint: `npm run lint`
+
+## Project Notes
+
+- Current speech-to-text flow runs from frontend directly to Deepgram.
+- Backend/multi-user setup is not required for your current flow.
+
+## One-Liner
+
+`npm install` -> set `.env` -> `npx expo start`
