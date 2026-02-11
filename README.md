@@ -70,8 +70,8 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 5. Check it is running:
 
-- `http://<your-ip-address>:8000/`
-- `http://<your-ip-address>:8000/health`
+- `http://localhost:8000/`
+- `http://localhost:8000/health`
 
 ## Backend URL/IP Setup
 
@@ -80,7 +80,7 @@ This project currently hardcodes backend URLs in `constants/api.ts`.
 - `WEBSOCKET_URL`
 - `API_URL`
 
-If you are a different user or running on a different machine, update these to your own backend host.
+If you are a different user or running on a different machine, update "localhost" of these to your own backend host (the IP address of your laptop).
 
 Quick rule:
 - If frontend and backend run on the same computer (web/simulator), `localhost` may work.
@@ -93,11 +93,6 @@ Quick rule:
 - iOS: `npm run ios`
 - Web: `npm run web`
 - Lint: `npm run lint`
-
-## Project Notes
-
-- Current speech-to-text flow runs from frontend directly to Deepgram.
-- Backend/multi-user setup is not required for your current flow.
 
 ## One-Liner
 
