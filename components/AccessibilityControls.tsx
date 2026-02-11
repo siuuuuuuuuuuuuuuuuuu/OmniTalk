@@ -3,47 +3,189 @@
  * Person 2: Accessibility and Visual Customization
  *
  * UI elements for adjusting accessibility preferences including
- * text size, captions, high contrast, and TTS settings.
+ * text size, captions, high contrast, TTS settings, and quick
+ * presets for different user accessibility modes.
  */
 
 import Slider from "@react-native-community/slider";
-import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import React, { useRef, useState } from "react";
+import {
+  Animated,
+  LayoutAnimation,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  UIManager,
+  Platform,
+  View,
+} from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import type {
-    AccessibilityControlsProps,
-    AccessibilitySettings,
+  AccessibilityControlsProps,
+  AccessibilitySettings,
+  UserAccessibilityMode,
 } from "@/types";
 
+// Enable LayoutAnimation on Android
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 type FontSize = AccessibilitySettings["fontSize"];
+
+const FONT_SIZE_MAP: Record<FontSize, number> = {
+  small: 13,
+  medium: 16,
+  large: 20,
+  "extra-large": 24,
+};
+
+// Accessibility presets for quick setup
+const ACCESSIBILITY_PRESETS: {
+  mode: UserAccessibilityMode;
+  label: string;
+  icon: string;
+  description: string;
+  settings: Partial<AccessibilitySettings>;
+}[] = [
+  {
+    mode: "deaf",
+    label: "Deaf",
+    icon: "\uD83D\uDC42",
+    description: "Captions on, large text, high contrast",
+    settings: {
+      fontSize: "large",
+      highContrast: true,
+      captionsEnabled: true,
+      ttsEnabled: false,
+      signLanguageEnabled: false,
+      hapticFeedback: true,
+    },
+  },
+  {
+    mode: "mute",
+    label: "Mute",
+    icon: "\uD83E\uDD10",
+    description: "Sign language on, text input ready",
+    settings: {
+      fontSize: "medium",
+      highContrast: false,
+      captionsEnabled: true,
+      ttsEnabled: false,
+      signLanguageEnabled: true,
+      hapticFeedback: true,
+    },
+  },
+  {
+    mode: "blind",
+    label: "Blind",
+    icon: "\uD83D\uDC41",
+    description: "TTS on, extra-large text, haptic feedback",
+    settings: {
+      fontSize: "extra-large",
+      highContrast: true,
+      captionsEnabled: false,
+      ttsEnabled: true,
+      ttsSpeed: 1.0,
+      signLanguageEnabled: false,
+      hapticFeedback: true,
+    },
+  },
+  {
+    mode: "standard",
+    label: "Standard",
+    icon: "\uD83D\uDC64",
+    description: "Default settings for all features",
+    settings: {
+      fontSize: "medium",
+      highContrast: false,
+      captionsEnabled: true,
+      ttsEnabled: false,
+      ttsSpeed: 1.0,
+      signLanguageEnabled: false,
+      hapticFeedback: true,
+    },
+  },
+];
 
 export function AccessibilityControls({
   settings,
   onSettingsChange,
 }: AccessibilityControlsProps) {
   const [expandedSection, setExpandedSection] = useState<string | null>(
-    "display",
+    "presets",
   );
+  const [activePreset, setActivePreset] = useState<UserAccessibilityMode | null>(null);
 
   const toggleSection = (section: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const fontSizeOptions: { label: string; value: FontSize }[] = [
-    { label: "S", value: "small" },
-    { label: "M", value: "medium" },
-    { label: "L", value: "large" },
-    { label: "XL", value: "extra-large" },
+  const applyPreset = (preset: typeof ACCESSIBILITY_PRESETS[0]) => {
+    setActivePreset(preset.mode);
+    onSettingsChange(preset.settings);
+  };
+
+  const fontSizeOptions: { label: string; value: FontSize; sampleSize: number }[] = [
+    { label: "S", value: "small", sampleSize: 13 },
+    { label: "M", value: "medium", sampleSize: 16 },
+    { label: "L", value: "large", sampleSize: 20 },
+    { label: "XL", value: "extra-large", sampleSize: 24 },
   ];
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Quick Presets */}
+      <SettingsSection
+        title="Quick Setup"
+        icon="\u26A1"
+        isExpanded={expandedSection === "presets"}
+        onToggle={() => toggleSection("presets")}
+      >
+        <ThemedText style={styles.presetHint}>
+          Choose your accessibility profile
+        </ThemedText>
+        <View style={styles.presetGrid}>
+          {ACCESSIBILITY_PRESETS.map((preset) => (
+            <Pressable
+              key={preset.mode}
+              style={({ pressed }) => [
+                styles.presetCard,
+                activePreset === preset.mode && styles.presetCardActive,
+                pressed && styles.presetCardPressed,
+              ]}
+              onPress={() => applyPreset(preset)}
+              accessibilityLabel={`${preset.label} preset: ${preset.description}`}
+              accessibilityRole="button"
+            >
+              <ThemedText style={styles.presetIcon}>{preset.icon}</ThemedText>
+              <ThemedText
+                style={[
+                  styles.presetLabel,
+                  activePreset === preset.mode && styles.presetLabelActive,
+                ]}
+              >
+                {preset.label}
+              </ThemedText>
+              <ThemedText style={styles.presetDescription}>
+                {preset.description}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
+      </SettingsSection>
+
       {/* Display Settings */}
       <SettingsSection
         title="Display"
-        icon="👁"
+        icon="\uD83D\uDC41"
         isExpanded={expandedSection === "display"}
         onToggle={() => toggleSection("display")}
       >
@@ -59,7 +201,10 @@ export function AccessibilityControls({
                   settings.fontSize === option.value &&
                     styles.fontSizeButtonActive,
                 ]}
-                onPress={() => onSettingsChange({ fontSize: option.value })}
+                onPress={() => {
+                  setActivePreset(null);
+                  onSettingsChange({ fontSize: option.value });
+                }}
                 accessibilityLabel={`Font size ${option.label}`}
                 accessibilityRole="button"
               >
@@ -77,6 +222,27 @@ export function AccessibilityControls({
           </View>
         </View>
 
+        {/* Live Font Preview */}
+        <View style={styles.fontPreview}>
+          <ThemedText style={styles.fontPreviewLabel}>Preview</ThemedText>
+          <View
+            style={[
+              styles.fontPreviewBox,
+              settings.highContrast && styles.fontPreviewBoxHighContrast,
+            ]}
+          >
+            <ThemedText
+              style={[
+                styles.fontPreviewText,
+                { fontSize: FONT_SIZE_MAP[settings.fontSize] },
+                settings.highContrast && styles.fontPreviewTextHighContrast,
+              ]}
+            >
+              The quick brown fox jumps over the lazy dog
+            </ThemedText>
+          </View>
+        </View>
+
         {/* High Contrast */}
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
@@ -87,7 +253,10 @@ export function AccessibilityControls({
           </View>
           <Switch
             value={settings.highContrast}
-            onValueChange={(value) => onSettingsChange({ highContrast: value })}
+            onValueChange={(value) => {
+              setActivePreset(null);
+              onSettingsChange({ highContrast: value });
+            }}
             trackColor={{ false: "#767577", true: "#4A90D9" }}
             thumbColor={settings.highContrast ? "#FFFFFF" : "#f4f3f4"}
             accessibilityLabel="Toggle high contrast mode"
@@ -98,11 +267,10 @@ export function AccessibilityControls({
       {/* Captions Settings */}
       <SettingsSection
         title="Captions"
-        icon="💬"
+        icon="\uD83D\uDCAC"
         isExpanded={expandedSection === "captions"}
         onToggle={() => toggleSection("captions")}
       >
-        {/* Enable Captions */}
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <ThemedText style={styles.settingLabel}>Show Captions</ThemedText>
@@ -112,9 +280,10 @@ export function AccessibilityControls({
           </View>
           <Switch
             value={settings.captionsEnabled}
-            onValueChange={(value) =>
-              onSettingsChange({ captionsEnabled: value })
-            }
+            onValueChange={(value) => {
+              setActivePreset(null);
+              onSettingsChange({ captionsEnabled: value });
+            }}
             trackColor={{ false: "#767577", true: "#4A90D9" }}
             thumbColor={settings.captionsEnabled ? "#FFFFFF" : "#f4f3f4"}
             accessibilityLabel="Toggle captions"
@@ -125,11 +294,10 @@ export function AccessibilityControls({
       {/* Text-to-Speech Settings */}
       <SettingsSection
         title="Text-to-Speech"
-        icon="🔊"
+        icon="\uD83D\uDD0A"
         isExpanded={expandedSection === "tts"}
         onToggle={() => toggleSection("tts")}
       >
-        {/* Enable TTS */}
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <ThemedText style={styles.settingLabel}>Enable TTS</ThemedText>
@@ -139,7 +307,10 @@ export function AccessibilityControls({
           </View>
           <Switch
             value={settings.ttsEnabled}
-            onValueChange={(value) => onSettingsChange({ ttsEnabled: value })}
+            onValueChange={(value) => {
+              setActivePreset(null);
+              onSettingsChange({ ttsEnabled: value });
+            }}
             trackColor={{ false: "#767577", true: "#4A90D9" }}
             thumbColor={settings.ttsEnabled ? "#FFFFFF" : "#f4f3f4"}
             accessibilityLabel="Toggle text-to-speech"
@@ -168,8 +339,8 @@ export function AccessibilityControls({
               accessibilityLabel={`TTS speed ${settings.ttsSpeed}`}
             />
             <View style={styles.sliderLabels}>
-              <ThemedText style={styles.sliderLabel}>Slow</ThemedText>
-              <ThemedText style={styles.sliderLabel}>Fast</ThemedText>
+              <ThemedText style={styles.sliderLabel}>0.5x Slow</ThemedText>
+              <ThemedText style={styles.sliderLabel}>2.0x Fast</ThemedText>
             </View>
           </View>
         )}
@@ -178,11 +349,10 @@ export function AccessibilityControls({
       {/* Sign Language Settings */}
       <SettingsSection
         title="Sign Language"
-        icon="🤟"
+        icon="\uD83E\uDD1F"
         isExpanded={expandedSection === "sign"}
         onToggle={() => toggleSection("sign")}
       >
-        {/* Enable Sign Language */}
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <ThemedText style={styles.settingLabel}>Sign Detection</ThemedText>
@@ -192,9 +362,10 @@ export function AccessibilityControls({
           </View>
           <Switch
             value={settings.signLanguageEnabled}
-            onValueChange={(value) =>
-              onSettingsChange({ signLanguageEnabled: value })
-            }
+            onValueChange={(value) => {
+              setActivePreset(null);
+              onSettingsChange({ signLanguageEnabled: value });
+            }}
             trackColor={{ false: "#767577", true: "#4A90D9" }}
             thumbColor={settings.signLanguageEnabled ? "#FFFFFF" : "#f4f3f4"}
             accessibilityLabel="Toggle sign language detection"
@@ -205,11 +376,10 @@ export function AccessibilityControls({
       {/* Feedback Settings */}
       <SettingsSection
         title="Feedback"
-        icon="📳"
+        icon="\uD83D\uDCF3"
         isExpanded={expandedSection === "feedback"}
         onToggle={() => toggleSection("feedback")}
       >
-        {/* Haptic Feedback */}
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <ThemedText style={styles.settingLabel}>Haptic Feedback</ThemedText>
@@ -219,9 +389,10 @@ export function AccessibilityControls({
           </View>
           <Switch
             value={settings.hapticFeedback}
-            onValueChange={(value) =>
-              onSettingsChange({ hapticFeedback: value })
-            }
+            onValueChange={(value) => {
+              setActivePreset(null);
+              onSettingsChange({ hapticFeedback: value });
+            }}
             trackColor={{ false: "#767577", true: "#4A90D9" }}
             thumbColor={settings.hapticFeedback ? "#FFFFFF" : "#f4f3f4"}
             accessibilityLabel="Toggle haptic feedback"
@@ -229,10 +400,43 @@ export function AccessibilityControls({
         </View>
       </SettingsSection>
 
+      {/* Active Settings Summary */}
+      <View style={styles.summarySection}>
+        <ThemedText style={styles.summaryTitle}>Current Settings</ThemedText>
+        <View style={styles.summaryChips}>
+          <SettingChip
+            label={`Font: ${settings.fontSize}`}
+            active={true}
+          />
+          {settings.highContrast && (
+            <SettingChip label="High Contrast" active={true} />
+          )}
+          {settings.captionsEnabled && (
+            <SettingChip label="Captions" active={true} />
+          )}
+          {settings.ttsEnabled && (
+            <SettingChip
+              label={`TTS ${settings.ttsSpeed.toFixed(1)}x`}
+              active={true}
+            />
+          )}
+          {settings.signLanguageEnabled && (
+            <SettingChip label="Sign Language" active={true} />
+          )}
+          {settings.hapticFeedback && (
+            <SettingChip label="Haptic" active={true} />
+          )}
+        </View>
+      </View>
+
       {/* Reset Button */}
       <Pressable
-        style={styles.resetButton}
+        style={({ pressed }) => [
+          styles.resetButton,
+          pressed && styles.resetButtonPressed,
+        ]}
         onPress={() => {
+          setActivePreset(null);
           onSettingsChange({
             fontSize: "medium",
             highContrast: false,
@@ -254,7 +458,18 @@ export function AccessibilityControls({
   );
 }
 
-// Collapsible Settings Section
+// Setting Chip for summary
+function SettingChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <View style={[styles.chip, active && styles.chipActive]}>
+      <ThemedText style={[styles.chipText, active && styles.chipTextActive]}>
+        {label}
+      </ThemedText>
+    </View>
+  );
+}
+
+// Collapsible Settings Section with animated expand/collapse
 interface SettingsSectionProps {
   title: string;
   icon: string;
@@ -270,19 +485,38 @@ function SettingsSection({
   onToggle,
   children,
 }: SettingsSectionProps) {
+  const rotateAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
+
+  React.useEffect(() => {
+    Animated.timing(rotateAnim, {
+      toValue: isExpanded ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [isExpanded]);
+
+  const rotate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "90deg"],
+  });
+
   return (
     <ThemedView style={styles.section}>
       <Pressable
-        style={styles.sectionHeader}
+        style={({ pressed }) => [
+          styles.sectionHeader,
+          pressed && styles.sectionHeaderPressed,
+        ]}
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityLabel={`${title} settings, ${isExpanded ? "expanded" : "collapsed"}`}
+        accessibilityState={{ expanded: isExpanded }}
       >
         <ThemedText style={styles.sectionIcon}>{icon}</ThemedText>
         <ThemedText style={styles.sectionTitle}>{title}</ThemedText>
-        <ThemedText style={styles.expandIcon}>
-          {isExpanded ? "▼" : "▶"}
-        </ThemedText>
+        <Animated.View style={{ transform: [{ rotate }] }}>
+          <ThemedText style={styles.expandIcon}>{"\u25B6"}</ThemedText>
+        </Animated.View>
       </Pressable>
       {isExpanded && <View style={styles.sectionContent}>{children}</View>}
     </ThemedView>
@@ -293,6 +527,54 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
+  // Presets
+  presetHint: {
+    fontSize: 13,
+    opacity: 0.6,
+    marginBottom: 12,
+  },
+  presetGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  presetCard: {
+    width: "48%",
+    flexBasis: "47%",
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(128, 128, 128, 0.06)",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  presetCardActive: {
+    borderColor: "#4A90D9",
+    backgroundColor: "rgba(74, 144, 217, 0.08)",
+  },
+  presetCardPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  presetIcon: {
+    fontSize: 24,
+    marginBottom: 6,
+  },
+  presetLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  presetLabelActive: {
+    color: "#4A90D9",
+  },
+  presetDescription: {
+    fontSize: 11,
+    opacity: 0.6,
+    lineHeight: 15,
+  },
+
+  // Sections
   section: {
     marginBottom: 8,
     borderRadius: 12,
@@ -302,6 +584,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
+  },
+  sectionHeaderPressed: {
+    opacity: 0.7,
   },
   sectionIcon: {
     fontSize: 20,
@@ -320,6 +605,8 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 0,
   },
+
+  // Settings
   settingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -341,6 +628,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: 2,
   },
+
+  // Font Size
   fontSizeSelector: {
     flexDirection: "row",
     gap: 8,
@@ -363,6 +652,39 @@ const styles = StyleSheet.create({
   fontSizeButtonTextActive: {
     color: "#FFFFFF",
   },
+
+  // Font Preview
+  fontPreview: {
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  fontPreviewLabel: {
+    fontSize: 11,
+    opacity: 0.5,
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  fontPreviewBox: {
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: "rgba(128, 128, 128, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(128, 128, 128, 0.1)",
+  },
+  fontPreviewBoxHighContrast: {
+    backgroundColor: "#000000",
+    borderColor: "#FFFFFF",
+  },
+  fontPreviewText: {
+    lineHeight: 28,
+  },
+  fontPreviewTextHighContrast: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+
+  // Slider
   sliderRow: {
     paddingVertical: 12,
   },
@@ -389,12 +711,55 @@ const styles = StyleSheet.create({
     fontSize: 10,
     opacity: 0.5,
   },
+
+  // Summary
+  summarySection: {
+    marginTop: 8,
+    padding: 16,
+  },
+  summaryTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    opacity: 0.5,
+    marginBottom: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  summaryChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "rgba(128, 128, 128, 0.1)",
+  },
+  chipActive: {
+    backgroundColor: "rgba(74, 144, 217, 0.12)",
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: "500",
+    opacity: 0.6,
+  },
+  chipTextActive: {
+    color: "#4A90D9",
+    opacity: 1,
+  },
+
+  // Reset
   resetButton: {
     marginTop: 16,
+    marginBottom: 32,
     padding: 16,
     alignItems: "center",
     borderRadius: 12,
     backgroundColor: "rgba(255, 107, 107, 0.1)",
+  },
+  resetButtonPressed: {
+    opacity: 0.7,
   },
   resetButtonText: {
     color: "#FF6B6B",

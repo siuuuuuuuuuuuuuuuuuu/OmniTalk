@@ -1,6 +1,5 @@
 import React from 'react';
 import { Pressable, SafeAreaView, StyleSheet, View } from 'react-native';
-import { Image } from 'expo-image';
 import { ThemedText } from '@/components/themed-text';
 import { router } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -44,6 +43,23 @@ export default function HomeScreen() {
             <ThemedText style={styles.cardSub}>Camera translate</ThemedText>
           </Pressable>
         </View>
+
+        {/* Settings shortcut */}
+        <Pressable
+          style={({ pressed }) => [styles.settingsCard, pressed && styles.settingsCardPressed]}
+          onPress={() => router.navigate('/(tabs)/settings')}
+        >
+          <View style={styles.settingsIconWrap}>
+            <MaterialIcons name="settings" size={24} color="#6366F1" />
+          </View>
+          <View style={styles.settingsInfo}>
+            <ThemedText style={styles.settingsTitle}>Accessibility Settings</ThemedText>
+            <ThemedText style={styles.settingsSub}>
+              Customize font size, contrast, TTS, and more
+            </ThemedText>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color="#94A3B8" />
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -61,37 +77,15 @@ const styles = StyleSheet.create({
     paddingTop: 30,
   },
 
-  // Logo
-  logoArea: {
-    alignItems: 'center',
-    paddingTop: 12,
-  },
-  logoClip: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    overflow: 'hidden',
-  },
-  logo: {
-    width: 180,
-    height: 180,
-  },
-
   // Greeting
   greetingArea: {
     paddingTop: 12,
     paddingBottom: 32,
   },
-  greeting: {
-    fontSize: 16,
-    color: '#94A3B8',
-    fontWeight: '500',
-    marginBottom: 6,
-  },
   appName: {
     fontSize: 32,
     fontWeight: '800',
-    lineHeight: 38, 
+    lineHeight: 38,
     color: '#0F172A',
     letterSpacing: -0.5,
     marginTop: 2,
@@ -147,5 +141,42 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500',
     marginTop: 4,
+  },
+
+  // Settings shortcut
+  settingsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 24,
+    padding: 18,
+    borderRadius: 16,
+    backgroundColor: '#F5F3FF',
+    gap: 14,
+  },
+  settingsCardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+  settingsIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsInfo: {
+    flex: 1,
+  },
+  settingsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  settingsSub: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '400',
+    marginTop: 2,
   },
 });

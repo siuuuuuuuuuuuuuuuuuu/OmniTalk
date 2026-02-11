@@ -20,6 +20,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'text.bubble.fill': 'chat-bubble',
   'hand.raised.fill': 'pan-tool',
+  'gearshape.fill': 'settings',
 } as IconMapping;
 
 /**
