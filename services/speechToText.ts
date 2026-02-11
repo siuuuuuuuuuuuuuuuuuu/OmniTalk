@@ -75,6 +75,7 @@ export class SpeechToTextService {
   private config: SpeechToTextConfig;
   private callbacks: SpeechToTextCallbacks;
   private isConnected = false;
+  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     config: SpeechToTextConfig,
@@ -124,6 +125,15 @@ export class SpeechToTextService {
 
         this.connection.on(LiveTranscriptionEvents.Open, () => {
           this.isConnected = true;
+
+          // Send keepAlive every 8s to prevent Deepgram's ~10s silence timeout
+          this.clearKeepAlive();
+          this.keepAliveInterval = setInterval(() => {
+            if (this.connection && this.isConnected) {
+              this.connection.keepAlive();
+            }
+          }, 8000);
+
           this.callbacks.onOpen?.();
           resolve();
         });
@@ -142,6 +152,7 @@ export class SpeechToTextService {
 
         this.connection.on(LiveTranscriptionEvents.Close, () => {
           this.isConnected = false;
+          this.clearKeepAlive();
           this.callbacks.onClose?.();
         });
 
@@ -257,11 +268,22 @@ export class SpeechToTextService {
    * Disconnect from Deepgram
    */
   disconnect(): void {
+    this.clearKeepAlive();
     if (this.connection) {
       this.connection.finish();
       this.connection = null;
     }
     this.isConnected = false;
+  }
+
+  /**
+   * Clear the keepAlive interval
+   */
+  private clearKeepAlive(): void {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
   }
 
   /**
