@@ -9,9 +9,9 @@ import Constants from "expo-constants";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
-  FlatList,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -66,102 +66,17 @@ type Caption = {
   direction: number;
 };
 
-// ─── Mock meeting data ──────────────────────────────────────────────────────
-const MOCK_SPEAKERS: Speaker[] = [
-  { name: "David Park", index: 0, direction: 80 },
-  { name: "Lisa Wang", index: 1, direction: 120 },
-  { name: "James Miller", index: 2, direction: 45 },
-  { name: "Priya Patel", index: 3, direction: 160 },
-  { name: "Tom Anderson", index: 4, direction: 200 },
-  { name: "Maria Garcia", index: 5, direction: 330 },
-];
+// ─── Default directions for positioning speakers on the radar ───────────────
+const SPEAKER_DIRECTIONS = [80, 120, 45, 160, 200, 330, 10, 260, 300, 140];
 
-const INITIAL_CAPTIONS: Caption[] = [
-  {
-    id: "1",
-    speaker: "David Park",
-    speakerIndex: 0,
-    direction: 80,
-    text: "Alright everyone, let us kick off the standup. Quick updates from each team please.",
-    timestamp: Date.now() - 45000,
-  },
-  {
-    id: "2",
-    speaker: "Lisa Wang",
-    speakerIndex: 1,
-    direction: 120,
-    text: "Design team shipped the new onboarding flow mockups yesterday. We are waiting on eng review.",
-    timestamp: Date.now() - 38000,
-  },
-  {
-    id: "3",
-    speaker: "James Miller",
-    speakerIndex: 2,
-    direction: 45,
-    text: "I will take a look this afternoon. We had a blocker on the auth service but it is resolved now.",
-    timestamp: Date.now() - 30000,
-  },
-];
-
-// Simulated incoming captions (fed one at a time)
-const QUEUED_CAPTIONS: Caption[] = [
-  {
-    id: "4",
-    speaker: "Priya Patel",
-    speakerIndex: 3,
-    direction: 160,
-    text: "Quick note — the API rate limits need to be bumped before we launch. Can someone file that?",
-    timestamp: 0,
-  },
-  {
-    id: "5",
-    speaker: "Tom Anderson",
-    speakerIndex: 4,
-    direction: 200,
-    text: "I can handle it. Also, QA found two regressions in the checkout flow we need to prioritize.",
-    timestamp: 0,
-  },
-  {
-    id: "6",
-    speaker: "David Park",
-    speakerIndex: 0,
-    direction: 80,
-    text: "Thanks Tom. Let us make those P0. Anything else before we move to the roadmap discussion?",
-    timestamp: 0,
-  },
-  {
-    id: "7",
-    speaker: "Maria Garcia",
-    speakerIndex: 5,
-    direction: 330,
-    text: "The accessibility audit results came in. We have a few critical items to address before the release.",
-    timestamp: 0,
-  },
-  {
-    id: "8",
-    speaker: "Lisa Wang",
-    speakerIndex: 1,
-    direction: 120,
-    text: "I can help with the visual design updates for the audit findings. I will sync with Maria after this.",
-    timestamp: 0,
-  },
-  {
-    id: "9",
-    speaker: "James Miller",
-    speakerIndex: 2,
-    direction: 45,
-    text: "Sounds good. On the backend side, we are on track for the v2 API migration by end of sprint.",
-    timestamp: 0,
-  },
-  {
-    id: "10",
-    speaker: "Priya Patel",
-    speakerIndex: 3,
-    direction: 160,
-    text: "One more thing — we should schedule a cross-team design review before the feature freeze.",
-    timestamp: 0,
-  },
-];
+/** Build a display name and direction for a Deepgram speaker index */
+function getSpeakerInfo(index: number) {
+  return {
+    name: `Speaker ${index + 1}`,
+    index,
+    direction: SPEAKER_DIRECTIONS[index % SPEAKER_DIRECTIONS.length],
+  };
+}
 
 // ─── Pulsing Ripple ─────────────────────────────────────────────────────────
 function PulsingRipple({
@@ -296,11 +211,17 @@ function SpeakerNode({
 }
 
 // ─── Radar Visualizer ───────────────────────────────────────────────────────
-function SoundRadar({ activeSpeakerIndex }: { activeSpeakerIndex: number }) {
+function SoundRadar({
+  activeSpeakerIndex,
+  speakers,
+}: {
+  activeSpeakerIndex: number;
+  speakers: Speaker[];
+}) {
   const activeColor =
     SPEAKER_COLORS[activeSpeakerIndex % SPEAKER_COLORS.length];
   const activeName =
-    MOCK_SPEAKERS.find((s) => s.index === activeSpeakerIndex)?.name ?? "—";
+    speakers.find((s) => s.index === activeSpeakerIndex)?.name ?? "—";
 
   return (
     <View style={styles.radarSection}>
@@ -320,9 +241,9 @@ function SoundRadar({ activeSpeakerIndex }: { activeSpeakerIndex: number }) {
         </View>
 
         {/* Speaker nodes */}
-        {MOCK_SPEAKERS.map((speaker) => (
+        {speakers.map((speaker) => (
           <SpeakerNode
-            key={speaker.name}
+            key={speaker.index}
             speaker={speaker}
             isActive={speaker.index === activeSpeakerIndex}
           />
@@ -330,17 +251,19 @@ function SoundRadar({ activeSpeakerIndex }: { activeSpeakerIndex: number }) {
       </View>
 
       {/* Active speaker label */}
-      <View style={styles.activeSpeakerLabel}>
-        <View style={[styles.activeDot, { backgroundColor: activeColor }]} />
-        <ThemedText style={styles.activeSpeakerText}>
-          <ThemedText
-            style={[styles.activeSpeakerName, { color: activeColor }]}
-          >
-            {activeName}
+      {speakers.length > 0 && (
+        <View style={styles.activeSpeakerLabel}>
+          <View style={[styles.activeDot, { backgroundColor: activeColor }]} />
+          <ThemedText style={styles.activeSpeakerText}>
+            <ThemedText
+              style={[styles.activeSpeakerName, { color: activeColor }]}
+            >
+              {activeName}
+            </ThemedText>
+            {" is speaking"}
           </ThemedText>
-          {" is speaking"}
-        </ThemedText>
-      </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -404,58 +327,97 @@ function CaptionBubble({
 
 // ─── Main Screen ────────────────────────────────────────────────────────────
 export default function CaptionsScreen() {
-  const listRef = useRef<FlatList>(null);
-  const [captions, setCaptions] = useState<Caption[]>(INITIAL_CAPTIONS);
+  const scrollRef = useRef<ScrollView>(null);
+  const [captions, setCaptions] = useState<Caption[]>([]);
   const [activeSpeakerIndex, setActiveSpeakerIndex] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [sttService, setSttService] = useState<SpeechToTextService | null>(
     null,
   );
-  const captionIdRef = useRef(INITIAL_CAPTIONS.length + 1);
+  // Track which Deepgram speaker indices we've seen so far
+  const [knownSpeakers, setKnownSpeakers] = useState<Speaker[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "idle" | "connecting" | "connected" | "error"
+  >("idle");
+  // Auto-scroll to bottom; disabled when user scrolls up manually
+  const autoScrollRef = useRef(true);
+  const isNearBottomRef = useRef(true);
+  const captionIdRef = useRef(1);
+  const interimIdRef = useRef(0);
 
-  // Handle incoming transcription (defined before useEffect that uses it)
+  // Sliding window: max number of caption bubbles to keep visible
+  const MAX_VISIBLE_CAPTIONS = 50;
+
+  // Handle incoming transcription from Deepgram
   const handleTranscript = useCallback((result: TranscriptionResult) => {
     console.log(
       "Transcript received:",
       result.transcript,
       "isFinal:",
       result.isFinal,
+      "speaker:",
+      result.speaker,
     );
     if (!result.transcript.trim()) return;
 
-    // Show both interim and final results for better UX
     const speakerIdx = result.speaker ?? 0;
-    const speaker = MOCK_SPEAKERS[speakerIdx % MOCK_SPEAKERS.length];
+    const speaker = getSpeakerInfo(speakerIdx);
 
-    const newCaption: Caption = {
-      id: result.isFinal ? String(captionIdRef.current++) : "interim",
-      speaker: speaker.name,
-      speakerIndex: speaker.index,
-      direction: speaker.direction,
-      text: result.transcript,
-      timestamp: Date.now(),
-    };
+    // Register any new speaker we haven't seen yet
+    setKnownSpeakers((prev) => {
+      if (prev.some((s) => s.index === speakerIdx)) return prev;
+      return [...prev, speaker];
+    });
 
     if (result.isFinal) {
-      // Remove interim and add final
-      setCaptions((prev) => [
-        ...prev.filter((c) => c.id !== "interim"),
-        newCaption,
-      ]);
-    } else {
-      // Update or add interim caption
+      const newCaption: Caption = {
+        id: `final-${captionIdRef.current++}`,
+        speaker: speaker.name,
+        speakerIndex: speaker.index,
+        direction: speaker.direction,
+        text: result.transcript,
+        timestamp: Date.now(),
+      };
       setCaptions((prev) => {
-        const withoutInterim = prev.filter((c) => c.id !== "interim");
-        return [...withoutInterim, newCaption];
+        const updated = [
+          ...prev.filter((c) => !c.id.startsWith("interim-")),
+          newCaption,
+        ];
+        // Sliding window: drop oldest bubbles beyond the limit
+        return updated.length > MAX_VISIBLE_CAPTIONS
+          ? updated.slice(-MAX_VISIBLE_CAPTIONS)
+          : updated;
+      });
+    } else {
+      const newCaption: Caption = {
+        id: `interim-${interimIdRef.current++}`,
+        speaker: speaker.name,
+        speakerIndex: speaker.index,
+        direction: speaker.direction,
+        text: result.transcript,
+        timestamp: Date.now(),
+      };
+      setCaptions((prev) => {
+        const updated = [
+          ...prev.filter((c) => !c.id.startsWith("interim-")),
+          newCaption,
+        ];
+        return updated.length > MAX_VISIBLE_CAPTIONS
+          ? updated.slice(-MAX_VISIBLE_CAPTIONS)
+          : updated;
       });
     }
-    setActiveSpeakerIndex(speaker.index);
+    setActiveSpeakerIndex(speakerIdx);
   }, []);
+
+  // Only true when the user explicitly pressed the mic button to record
+  const userWantsRecording = useRef(false);
 
   // Initialize STT service only when API key is available
   useEffect(() => {
     if (!DEEPGRAM_API_KEY) {
       console.warn("Deepgram API key not found. Speech-to-text disabled.");
+      setConnectionStatus("error");
       return;
     }
     console.log("Initializing STT service...");
@@ -464,47 +426,129 @@ export default function CaptionsScreen() {
       { enableDiarization: true, maxSpeakers: 6 },
       {
         onTranscript: handleTranscript,
-        onError: (err) => console.error("STT Error:", err),
-        onOpen: () => console.log("STT Connected to Deepgram"),
-        onClose: () => console.log("STT Disconnected"),
+        onError: (err) => {
+          console.error("STT Error:", err);
+          setConnectionStatus("error");
+        },
+        onOpen: () => {
+          console.log("STT Connected to Deepgram");
+          setConnectionStatus("connected");
+        },
+        onClose: () => {
+          console.log("STT Disconnected");
+          setConnectionStatus("idle");
+          // Auto-reconnect only if user explicitly started recording
+          if (userWantsRecording.current) {
+            console.log("Auto-reconnecting to Deepgram in 500ms...");
+            setConnectionStatus("connecting");
+            // Brief delay to let the old connection fully tear down
+            setTimeout(() => {
+              stt
+                .connect()
+                .then(() => {
+                  console.log("STT auto-reconnected successfully");
+                })
+                .catch((err) => {
+                  console.error("Auto-reconnect failed:", err);
+                  setConnectionStatus("error");
+                });
+            }, 500);
+          }
+        },
       },
     );
     setSttService(stt);
     return () => stt.disconnect();
   }, [handleTranscript]);
 
-  // Audio handlers
-  const handleRecordingStart = useCallback(async () => {
-    console.log("Recording started, connecting to STT...");
-    if (!sttService?.connected) {
+  // Connect to Deepgram FIRST, then start audio capture
+  const handleRecordPress = useCallback(async () => {
+    if (isRecording) {
+      // Stop
+      userWantsRecording.current = false;
+      setIsRecording(false);
+      sttService?.finishStream();
+      return;
+    }
+
+    // Start: connect to Deepgram before audio capture begins
+    if (!sttService) {
+      console.error("STT service not initialized (check API key)");
+      setConnectionStatus("error");
+      return;
+    }
+
+    if (!sttService.connected) {
+      setConnectionStatus("connecting");
       try {
-        await sttService?.connect();
-        console.log("STT connected successfully");
+        await sttService.connect();
+        console.log("STT connected — starting audio capture");
       } catch (err) {
-        console.error("Failed to connect STT:", err);
+        console.error("Failed to connect to Deepgram:", err);
+        setConnectionStatus("error");
+        return;
       }
     }
+
+    // Deepgram is connected, now start recording
+    userWantsRecording.current = true;
+    setIsRecording(true);
+  }, [isRecording, sttService]);
+
+  const handleRecordingStart = useCallback(() => {
+    console.log("Audio capture started, STT connected:", sttService?.connected);
   }, [sttService]);
 
   const handleRecordingStop = useCallback(() => {
-    console.log("Recording stopped");
-    sttService?.finishStream();
+    console.log("Audio capture stopped");
+  }, []);
+
+  // Keep a ref to sttService so the audio chunk callback never has a stale reference
+  const sttServiceRef = useRef(sttService);
+  useEffect(() => {
+    sttServiceRef.current = sttService;
   }, [sttService]);
 
-  const handleAudioChunk = useCallback(
-    (chunk: ArrayBuffer) => {
-      if (sttService?.connected) {
-        sttService.sendAudio(chunk);
-      } else {
-        console.warn("Audio chunk received but STT not connected");
-      }
+  const handleAudioChunk = useCallback((chunk: ArrayBuffer) => {
+    const stt = sttServiceRef.current;
+    if (stt?.connected) {
+      stt.sendAudio(chunk);
+    }
+  }, []);
+
+  // Auto-scroll to bottom whenever captions change
+  useEffect(() => {
+    if (autoScrollRef.current) {
+      // Small timeout to let the DOM update before scrolling
+      const t = setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+      return () => clearTimeout(t);
+    }
+  }, [captions]);
+
+  // Detect if user scrolled away from bottom
+  const handleScroll = useCallback(
+    (e: {
+      nativeEvent: {
+        contentOffset: { y: number };
+        contentSize: { height: number };
+        layoutMeasurement: { height: number };
+      };
+    }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - contentOffset.y - layoutMeasurement.height;
+      isNearBottomRef.current = distanceFromBottom < 80;
+      autoScrollRef.current = isNearBottomRef.current;
     },
-    [sttService],
+    [],
   );
 
-  // Scroll to bottom on new caption
-  const handleContentSizeChange = useCallback(() => {
-    listRef.current?.scrollToEnd({ animated: true });
+  // Tap to re-enable auto-scroll and jump to bottom
+  const handleScrollToBottom = useCallback(() => {
+    autoScrollRef.current = true;
+    scrollRef.current?.scrollToEnd({ animated: true });
   }, []);
 
   return (
@@ -515,7 +559,8 @@ export default function CaptionsScreen() {
           <View>
             <ThemedText style={styles.headerTitle}>Live Captions</ThemedText>
             <ThemedText style={styles.headerSub}>
-              {MOCK_SPEAKERS.length} participants
+              {knownSpeakers.length} participant
+              {knownSpeakers.length !== 1 ? "s" : ""}
             </ThemedText>
           </View>
           <View style={styles.liveBadge}>
@@ -525,24 +570,28 @@ export default function CaptionsScreen() {
         </View>
 
         {/* ── Sound Radar ── */}
-        <SoundRadar activeSpeakerIndex={activeSpeakerIndex} />
+        <SoundRadar
+          activeSpeakerIndex={activeSpeakerIndex}
+          speakers={knownSpeakers}
+        />
 
         {/* ── Transcript ── */}
         <View style={styles.transcriptSection}>
-          <FlatList
-            ref={listRef}
-            data={captions}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item, index }) => (
+          <ScrollView
+            ref={scrollRef}
+            contentContainerStyle={styles.transcriptList}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+          >
+            {captions.map((item, index) => (
               <CaptionBubble
+                key={item.id}
                 item={item}
                 isLatest={index === captions.length - 1}
               />
-            )}
-            contentContainerStyle={styles.transcriptList}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={handleContentSizeChange}
-          />
+            ))}
+          </ScrollView>
         </View>
 
         {/* ── Hidden Audio Capture ── */}
@@ -556,17 +605,43 @@ export default function CaptionsScreen() {
           onError={(err) => console.error("Audio Error:", err)}
         />
 
+        {/* ── Status Badge ── */}
+        {connectionStatus === "connecting" && (
+          <View style={styles.statusBadge}>
+            <ThemedText style={styles.statusText}>
+              Connecting to Deepgram…
+            </ThemedText>
+          </View>
+        )}
+        {connectionStatus === "error" && (
+          <View style={[styles.statusBadge, styles.statusBadgeError]}>
+            <ThemedText style={styles.statusTextError}>
+              {!DEEPGRAM_API_KEY
+                ? "No API key set"
+                : "Connection failed — tap mic to retry"}
+            </ThemedText>
+          </View>
+        )}
+
         {/* ── Record FAB ── */}
         <Pressable
-          style={[styles.recordFab, isRecording && styles.recordFabActive]}
-          onPress={() => setIsRecording(!isRecording)}
+          style={[
+            styles.recordFab,
+            isRecording && styles.recordFabActive,
+            connectionStatus === "connecting" && styles.recordFabConnecting,
+          ]}
+          onPress={handleRecordPress}
           accessibilityLabel={
             isRecording ? "Stop recording" : "Start recording"
           }
           accessibilityRole="button"
         >
           <ThemedText style={styles.recordFabIcon}>
-            {isRecording ? "⏹" : "🎤"}
+            {connectionStatus === "connecting"
+              ? "⏳"
+              : isRecording
+                ? "⏹"
+                : "🎤"}
           </ThemedText>
         </Pressable>
       </View>
@@ -810,7 +885,57 @@ const styles = StyleSheet.create({
     backgroundColor: "#DC2626",
     shadowColor: "#DC2626",
   },
+  recordFabConnecting: {
+    backgroundColor: "#94A3B8",
+    shadowColor: "#94A3B8",
+  },
   recordFabIcon: {
     fontSize: 28,
+  },
+  statusBadge: {
+    position: "absolute",
+    bottom: 96,
+    alignSelf: "center",
+    backgroundColor: "#F0F9FF",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  statusBadgeError: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  statusText: {
+    fontSize: 13,
+    color: "#2563EB",
+    fontWeight: "600",
+  },
+  statusTextError: {
+    fontSize: 13,
+    color: "#DC2626",
+    fontWeight: "600",
+  },
+  scrollToBottomBtn: {
+    position: "absolute",
+    bottom: 12,
+    alignSelf: "center",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  scrollToBottomText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2563EB",
   },
 });

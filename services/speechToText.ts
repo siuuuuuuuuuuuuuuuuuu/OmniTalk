@@ -98,6 +98,16 @@ export class SpeechToTextService {
       throw new Error("Deepgram client not initialized");
     }
 
+    // Clean up any previous connection before reconnecting
+    if (this.connection) {
+      try {
+        this.connection.finish();
+      } catch (_) {
+        // ignore cleanup errors
+      }
+      this.connection = null;
+    }
+
     return new Promise((resolve, reject) => {
       try {
         this.connection = this.client!.listen.live({
