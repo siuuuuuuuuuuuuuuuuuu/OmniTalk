@@ -11,8 +11,7 @@ export type {
 } from "./speechToText";
 
 export {
-    createSignToTextService,
-    getSupportedLanguages, SignToTextService
+    createSignToTextService, SignToTextService
 } from "./signToText";
 export type { SignToTextCallbacks, SignToTextConfig } from "./signToText";
 

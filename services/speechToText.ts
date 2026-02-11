@@ -1,9 +1,19 @@
 /**
- * Speech-to-Text Service with Deepgram Integration
+ * Speech-to-Text Service with Deepgram SDK
  *
  * Handles real-time speech-to-text conversion with speaker diarization.
- * Uses Deepgram's WebSocket API for streaming audio transcription.
+ * Uses Deepgram's official SDK for streaming audio transcription.
  */
+
+import {
+  createClient,
+  LiveTranscriptionEvents,
+  type LiveClient,
+} from "@deepgram/sdk";
+
+// ============================================
+// Types
+// ============================================
 
 export interface TranscriptionResult {
   transcript: string;
@@ -26,49 +36,46 @@ export interface Word {
 export interface SpeechToTextConfig {
   apiKey: string;
   language?: string;
-  model?: "nova-2" | "nova" | "enhanced" | "base";
+  model?: "nova-3" | "nova-2" | "nova" | "enhanced" | "base";
   enableDiarization?: boolean;
   maxSpeakers?: number;
   punctuate?: boolean;
   interimResults?: boolean;
   sampleRate?: number;
-  encoding?:
-    | "linear16"
-    | "flac"
-    | "mulaw"
-    | "amr-nb"
-    | "amr-wb"
-    | "opus"
-    | "speex";
-  channels?: number;
+  smartFormat?: boolean;
 }
 
 export interface SpeechToTextCallbacks {
   onTranscript?: (result: TranscriptionResult) => void;
+  onSpeechStarted?: () => void;
+  onUtteranceEnd?: () => void;
   onError?: (error: Error) => void;
   onOpen?: () => void;
   onClose?: () => void;
 }
 
 const DEFAULT_CONFIG: Partial<SpeechToTextConfig> = {
-  language: "en-US",
-  model: "nova-2",
+  language: "en",
+  model: "nova-3",
   enableDiarization: true,
   maxSpeakers: 4,
   punctuate: true,
   interimResults: true,
   sampleRate: 16000,
-  encoding: "linear16",
-  channels: 1,
+  smartFormat: true,
 };
 
+// ============================================
+// Speech to Text Service
+// ============================================
+
 export class SpeechToTextService {
-  private ws: WebSocket | null = null;
+  private client: ReturnType<typeof createClient> | null = null;
+  private connection: LiveClient | null = null;
   private config: SpeechToTextConfig;
   private callbacks: SpeechToTextCallbacks;
   private isConnected = false;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3;
+  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     config: SpeechToTextConfig,
@@ -76,39 +83,11 @@ export class SpeechToTextService {
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.callbacks = callbacks;
+    this.client = createClient(this.config.apiKey);
   }
 
   /**
-   * Build the Deepgram WebSocket URL with query parameters
-   */
-  private buildWebSocketUrl(): string {
-    const baseUrl = "wss://api.deepgram.com/v1/listen";
-    const params = new URLSearchParams();
-
-    params.append("language", this.config.language || "en-US");
-    params.append("model", this.config.model || "nova-2");
-    params.append("punctuate", String(this.config.punctuate ?? true));
-    params.append(
-      "interim_results",
-      String(this.config.interimResults ?? true),
-    );
-    params.append("sample_rate", String(this.config.sampleRate || 16000));
-    params.append("encoding", this.config.encoding || "linear16");
-    params.append("channels", String(this.config.channels || 1));
-
-    // Enable diarization if configured
-    if (this.config.enableDiarization) {
-      params.append("diarize", "true");
-      if (this.config.maxSpeakers) {
-        params.append("diarize_version", "2");
-      }
-    }
-
-    return `${baseUrl}?${params.toString()}`;
-  }
-
-  /**
-   * Connect to Deepgram WebSocket API
+   * Connect to Deepgram live transcription
    */
   async connect(): Promise<void> {
     if (this.isConnected) {
@@ -116,42 +95,71 @@ export class SpeechToTextService {
       return;
     }
 
+    if (!this.client) {
+      throw new Error("Deepgram client not initialized");
+    }
+
+    // Clean up any previous connection before reconnecting
+    if (this.connection) {
+      try {
+        this.connection.finish();
+      } catch (_) {
+        // ignore cleanup errors
+      }
+      this.connection = null;
+    }
+
     return new Promise((resolve, reject) => {
       try {
-        const url = this.buildWebSocketUrl();
+        this.connection = this.client!.listen.live({
+          model: this.config.model || "nova-3",
+          language: this.config.language || "en",
+          smart_format: this.config.smartFormat ?? true,
+          punctuate: this.config.punctuate ?? true,
+          interim_results: this.config.interimResults ?? true,
+          diarize: this.config.enableDiarization ?? true,
+          sample_rate: this.config.sampleRate || 16000,
+          channels: 1,
+          encoding: "linear16",
+        });
 
-        this.ws = new WebSocket(url, ["token", this.config.apiKey]);
-
-        this.ws.onopen = () => {
+        this.connection.on(LiveTranscriptionEvents.Open, () => {
           this.isConnected = true;
-          this.reconnectAttempts = 0;
+
+          // Send keepAlive every 8s to prevent Deepgram's ~10s silence timeout
+          this.clearKeepAlive();
+          this.keepAliveInterval = setInterval(() => {
+            if (this.connection && this.isConnected) {
+              this.connection.keepAlive();
+            }
+          }, 8000);
+
           this.callbacks.onOpen?.();
           resolve();
-        };
+        });
 
-        this.ws.onmessage = (event) => {
-          this.handleMessage(event.data);
-        };
+        this.connection.on(LiveTranscriptionEvents.Transcript, (data) => {
+          this.handleTranscript(data);
+        });
 
-        this.ws.onerror = (error) => {
-          const err = new Error("WebSocket error occurred");
-          this.callbacks.onError?.(err);
-          reject(err);
-        };
+        this.connection.on(LiveTranscriptionEvents.SpeechStarted, () => {
+          this.callbacks.onSpeechStarted?.();
+        });
 
-        this.ws.onclose = (event) => {
+        this.connection.on(LiveTranscriptionEvents.UtteranceEnd, () => {
+          this.callbacks.onUtteranceEnd?.();
+        });
+
+        this.connection.on(LiveTranscriptionEvents.Close, () => {
           this.isConnected = false;
+          this.clearKeepAlive();
           this.callbacks.onClose?.();
+        });
 
-          // Attempt reconnection if not a clean close
-          if (
-            !event.wasClean &&
-            this.reconnectAttempts < this.maxReconnectAttempts
-          ) {
-            this.reconnectAttempts++;
-            setTimeout(() => this.connect(), 1000 * this.reconnectAttempts);
-          }
-        };
+        this.connection.on(LiveTranscriptionEvents.Error, (error) => {
+          this.callbacks.onError?.(new Error(String(error)));
+          reject(error);
+        });
       } catch (error) {
         reject(error);
       }
@@ -159,87 +167,80 @@ export class SpeechToTextService {
   }
 
   /**
-   * Parse and handle incoming messages from Deepgram
+   * Handle transcript data from Deepgram
    */
-  private handleMessage(data: string): void {
-    try {
-      const response = JSON.parse(data);
+  private handleTranscript(data: any): void {
+    if (!data.channel?.alternatives?.[0]) return;
 
-      // Check for transcription results
-      if (response.type === "Results" && response.channel?.alternatives?.[0]) {
-        const alternative = response.channel.alternatives[0];
-        const words = alternative.words || [];
+    const alternative = data.channel.alternatives[0];
+    const transcript = alternative.transcript;
 
-        const result: TranscriptionResult = {
-          transcript: alternative.transcript || "",
-          confidence: alternative.confidence || 0,
-          isFinal: response.is_final || false,
-          start: response.start || 0,
-          end: response.start + response.duration || 0,
-          words: words.map((w: any) => ({
-            word: w.word,
-            start: w.start,
-            end: w.end,
-            confidence: w.confidence,
-            speaker: w.speaker,
-          })),
-        };
+    if (!transcript) return;
 
-        // Extract speaker from words if diarization is enabled
-        if (this.config.enableDiarization && words.length > 0) {
-          // Get the most common speaker in this segment
-          const speakerCounts = words.reduce(
-            (acc: Record<number, number>, w: any) => {
-              if (w.speaker !== undefined) {
-                acc[w.speaker] = (acc[w.speaker] || 0) + 1;
-              }
-              return acc;
-            },
-            {},
-          );
+    const words = alternative.words || [];
 
-          const dominantSpeaker = Object.entries(speakerCounts).sort(
-            ([, a], [, b]) => (b as number) - (a as number),
-          )[0];
+    const result: TranscriptionResult = {
+      transcript,
+      confidence: alternative.confidence || 0,
+      isFinal: data.is_final || false,
+      start: data.start || 0,
+      end: data.start + data.duration || 0,
+      words: words.map((w: any) => ({
+        word: w.word,
+        start: w.start,
+        end: w.end,
+        confidence: w.confidence,
+        speaker: w.speaker,
+      })),
+    };
 
-          if (dominantSpeaker) {
-            result.speaker = parseInt(dominantSpeaker[0]);
+    // Extract speaker from words if diarization is enabled
+    if (this.config.enableDiarization && words.length > 0) {
+      const speakerCounts = words.reduce(
+        (acc: Record<number, number>, w: any) => {
+          if (w.speaker !== undefined) {
+            acc[w.speaker] = (acc[w.speaker] || 0) + 1;
           }
-        }
+          return acc;
+        },
+        {},
+      );
 
-        this.callbacks.onTranscript?.(result);
-      }
+      const dominantSpeaker = Object.entries(speakerCounts).sort(
+        ([, a], [, b]) => (b as number) - (a as number),
+      )[0];
 
-      // Handle errors from Deepgram
-      if (response.type === "Error") {
-        this.callbacks.onError?.(
-          new Error(response.message || "Deepgram error"),
-        );
+      if (dominantSpeaker) {
+        result.speaker = parseInt(dominantSpeaker[0]);
       }
-    } catch (error) {
-      console.error("SpeechToText: Failed to parse message", error);
     }
+
+    this.callbacks.onTranscript?.(result);
   }
 
   /**
    * Send audio data to Deepgram for transcription
    */
-  sendAudio(audioData: ArrayBuffer | Blob): void {
-    if (!this.isConnected || !this.ws) {
+  sendAudio(audioData: ArrayBuffer | Uint8Array | Blob): void {
+    if (!this.isConnected || !this.connection) {
       console.warn("SpeechToText: Not connected");
       return;
     }
 
-    if (this.ws.readyState !== WebSocket.OPEN) {
-      console.warn("SpeechToText: WebSocket not open");
-      return;
+    if (audioData instanceof Blob) {
+      // Send Blob directly
+      this.connection.send(audioData);
+    } else if (audioData instanceof ArrayBuffer) {
+      // Send ArrayBuffer directly
+      this.connection.send(audioData);
+    } else {
+      // Uint8Array - get underlying ArrayBuffer
+      this.connection.send(audioData.buffer as ArrayBuffer);
     }
-
-    this.ws.send(audioData);
   }
 
   /**
-   * Send audio stream chunk by chunk
+   * Stream audio blob in chunks
    */
   async streamAudioBlob(blob: Blob, chunkSize = 4096): Promise<void> {
     const arrayBuffer = await blob.arrayBuffer();
@@ -247,7 +248,8 @@ export class SpeechToTextService {
 
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
       const chunk = uint8Array.slice(i, i + chunkSize);
-      this.sendAudio(chunk.buffer);
+      // Send the chunk's underlying ArrayBuffer
+      this.connection?.send(chunk.buffer as ArrayBuffer);
 
       // Small delay to prevent overwhelming the connection
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -258,23 +260,30 @@ export class SpeechToTextService {
    * Signal end of audio stream
    */
   finishStream(): void {
-    if (!this.isConnected || !this.ws) {
-      return;
-    }
-
-    // Send empty byte to signal end of stream
-    this.ws.send(new Uint8Array(0));
+    // Send empty ArrayBuffer to signal end
+    this.connection?.send(new ArrayBuffer(0));
   }
 
   /**
    * Disconnect from Deepgram
    */
   disconnect(): void {
-    if (this.ws) {
-      this.ws.close(1000, "Client disconnect");
-      this.ws = null;
+    this.clearKeepAlive();
+    if (this.connection) {
+      this.connection.finish();
+      this.connection = null;
     }
     this.isConnected = false;
+  }
+
+  /**
+   * Clear the keepAlive interval
+   */
+  private clearKeepAlive(): void {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
   }
 
   /**
@@ -291,6 +300,10 @@ export class SpeechToTextService {
     this.callbacks = { ...this.callbacks, ...callbacks };
   }
 }
+
+// ============================================
+// Factory Functions
+// ============================================
 
 /**
  * Create a pre-configured speech-to-text service instance
