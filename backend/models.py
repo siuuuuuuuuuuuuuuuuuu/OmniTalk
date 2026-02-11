@@ -1,6 +1,8 @@
-from typing import List, Literal, Optional, Union
-from pydantic import BaseModel, Field
-from pydantic import RootModel
+from __future__ import annotations
+
+from typing import Annotated, Any, List, Literal, Optional, Union
+
+from pydantic import BaseModel, Field, RootModel, TypeAdapter
 
 # ============================================
 # User & Accessibility Types
@@ -74,24 +76,42 @@ class SignToTextResult(BaseModel):
 # WebSocket & Communication Types
 # ============================================
 
+WebSocketInboundMessageType = Literal[
+    "user_joined",
+    "user_left",
+    "audio_chunk",
+    "sign_frame",
+    "transcript",
+    "tts",
+    "ping",
+    "pong",
+]
+
+WebSocketOutboundMessageType = Literal[
+    "user_joined",
+    "user_left",
+    "audio_chunk",
+    "sign_frame",
+    "transcript",
+    "tts",
+    "ping",
+    "pong",
+    "error",
+]
+
 WebSocketMessageType = Literal[
     "user_joined",
     "user_left",
     "audio_chunk",
     "sign_frame",
     "transcript",
-    "tts"
+    "tts",
+    "ping",
+    "pong",
+    "error",
 ]
 
-class WebSocketMessage(BaseModel):
-    type: WebSocketMessageType
-    payload: Union[
-        "TranscriptPayload",
-        "SignDetectionPayload",
-        "UserEventPayload",
-        str, # For speaker_change and error
-        None # For ping/pong
-    ]
+class BaseWebSocketMessage(BaseModel):
     timestamp: int
     userId: Optional[str] = None
 
@@ -99,7 +119,7 @@ class TranscriptPayload(BaseModel):
     segment: TranscriptSegment
     roomId: str
 
-class SignDetectionPayload(BaseModel):
+class SignFramePayload(BaseModel):
     result: SignToTextResult
     userId: str
     roomId: str
@@ -108,8 +128,129 @@ class UserEventPayload(BaseModel):
     user: User
     roomId: str
 
-# Update forward refs for WebSocketMessage
-WebSocketMessage.update_forward_refs()
+class AudioChunkPayload(BaseModel):
+    roomId: str
+    chunk: str
+    format: Optional[str] = None
+    sampleRate: Optional[int] = None
+    sequence: Optional[int] = None
+
+class TTSPayload(BaseModel):
+    roomId: str
+    text: str
+    voice: Optional[str] = None
+    speed: Optional[float] = Field(default=None, ge=0.5, le=2.0)
+
+# ----------------------------
+# Inbound (client -> server)
+# ----------------------------
+
+class InboundUserJoinedMessage(BaseWebSocketMessage):
+    type: Literal["user_joined"]
+    payload: UserEventPayload
+
+class InboundUserLeftMessage(BaseWebSocketMessage):
+    type: Literal["user_left"]
+    payload: UserEventPayload
+
+class InboundAudioChunkMessage(BaseWebSocketMessage):
+    type: Literal["audio_chunk"]
+    payload: AudioChunkPayload
+
+class InboundSignFrameMessage(BaseWebSocketMessage):
+    type: Literal["sign_frame"]
+    payload: SignFramePayload
+
+class InboundTranscriptMessage(BaseWebSocketMessage):
+    type: Literal["transcript"]
+    payload: TranscriptPayload
+
+class InboundTTSMessage(BaseWebSocketMessage):
+    type: Literal["tts"]
+    payload: TTSPayload
+
+class InboundPingMessage(BaseWebSocketMessage):
+    type: Literal["ping"]
+    payload: Optional[dict[str, Any]] = None
+
+class InboundPongMessage(BaseWebSocketMessage):
+    type: Literal["pong"]
+    payload: Optional[dict[str, Any]] = None
+
+WebSocketInboundMessage = Annotated[
+    Union[
+        InboundUserJoinedMessage,
+        InboundUserLeftMessage,
+        InboundAudioChunkMessage,
+        InboundSignFrameMessage,
+        InboundTranscriptMessage,
+        InboundTTSMessage,
+        InboundPingMessage,
+        InboundPongMessage,
+    ],
+    Field(discriminator="type"),
+]
+
+# ----------------------------
+# Outbound (server -> client)
+# ----------------------------
+
+class OutboundUserJoinedMessage(BaseWebSocketMessage):
+    type: Literal["user_joined"]
+    payload: UserEventPayload
+
+class OutboundUserLeftMessage(BaseWebSocketMessage):
+    type: Literal["user_left"]
+    payload: UserEventPayload
+
+class OutboundAudioChunkMessage(BaseWebSocketMessage):
+    type: Literal["audio_chunk"]
+    payload: AudioChunkPayload
+
+class OutboundSignFrameMessage(BaseWebSocketMessage):
+    type: Literal["sign_frame"]
+    payload: SignFramePayload
+
+class OutboundTranscriptMessage(BaseWebSocketMessage):
+    type: Literal["transcript"]
+    payload: TranscriptPayload
+
+class OutboundTTSMessage(BaseWebSocketMessage):
+    type: Literal["tts"]
+    payload: TTSPayload
+
+class OutboundPingMessage(BaseWebSocketMessage):
+    type: Literal["ping"]
+    payload: Optional[dict[str, Any]] = None
+
+class OutboundPongMessage(BaseWebSocketMessage):
+    type: Literal["pong"]
+    payload: Optional[dict[str, Any]] = None
+
+class OutboundErrorMessage(BaseWebSocketMessage):
+    type: Literal["error"]
+    payload: str
+
+WebSocketOutboundMessage = Annotated[
+    Union[
+        OutboundUserJoinedMessage,
+        OutboundUserLeftMessage,
+        OutboundAudioChunkMessage,
+        OutboundSignFrameMessage,
+        OutboundTranscriptMessage,
+        OutboundTTSMessage,
+        OutboundPingMessage,
+        OutboundPongMessage,
+        OutboundErrorMessage,
+    ],
+    Field(discriminator="type"),
+]
+
+websocket_inbound_adapter = TypeAdapter(WebSocketInboundMessage)
+websocket_outbound_adapter = TypeAdapter(WebSocketOutboundMessage)
+
+# Backward-compat alias used by older imports.
+SignDetectionPayload = SignFramePayload
 
 # ============================================
 # Room & Session Types

@@ -1,16 +1,32 @@
-from typing import Dict, List
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import time
+from typing import Dict
+
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from starlette.websockets import WebSocketState
 
 from models import (
-    WebSocketMessage,
-    WebSocketMessageType,
+    AudioChunkPayload,
+    BaseWebSocketMessage,
+    InboundAudioChunkMessage,
+    InboundSignFrameMessage,
+    InboundTranscriptMessage,
+    InboundTTSMessage,
+    OutboundAudioChunkMessage,
+    OutboundErrorMessage,
+    OutboundPongMessage,
+    OutboundSignFrameMessage,
+    OutboundTranscriptMessage,
+    OutboundTTSMessage,
+    OutboundUserJoinedMessage,
+    OutboundUserLeftMessage,
+    SignFramePayload,
+    TTSPayload,
     TranscriptPayload,
-    SignDetectionPayload,
-    UserEventPayload,
     User,
+    UserEventPayload,
+    websocket_inbound_adapter,
 )
 
 app = FastAPI()
@@ -26,36 +42,42 @@ app.add_middleware(
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.active_connections: Dict[str, Dict[WebSocket, str]] = {}
 
-    async def connect(self, websocket: WebSocket, room_id: str):
+    async def connect(self, websocket: WebSocket, room_id: str, user_id: str):
         await websocket.accept()
         if room_id not in self.active_connections:
-            self.active_connections[room_id] = []
-        self.active_connections[room_id].append(websocket)
-        print(f"WebSocket connected to room: {room_id}")
+            self.active_connections[room_id] = {}
+        self.active_connections[room_id][websocket] = user_id
+        print(f"WebSocket connected to room={room_id} user={user_id}")
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.active_connections:
-            if websocket in self.active_connections[room_id]:
-                self.active_connections[room_id].remove(websocket)
+            self.active_connections[room_id].pop(websocket, None)
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
         print(f"WebSocket disconnected from room: {room_id}")
 
+    async def send_personal_message(self, message: BaseWebSocketMessage, websocket: WebSocket):
+        await websocket.send_text(message.model_dump_json())
 
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str, room_id: str):
+    async def broadcast(
+        self,
+        message: BaseWebSocketMessage,
+        room_id: str,
+        exclude: WebSocket | None = None,
+    ):
         if room_id not in self.active_connections:
             return
 
+        serialized = message.model_dump_json()
         dead = []
-        for ws in list(self.active_connections[room_id]):
+        for ws in list(self.active_connections[room_id].keys()):
+            if exclude is not None and ws is exclude:
+                continue
             try:
                 if ws.application_state == WebSocketState.CONNECTED:
-                    await ws.send_text(message)
+                    await ws.send_text(serialized)
                 else:
                     dead.append(ws)
             except Exception:
@@ -73,71 +95,171 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+def build_user_event_payload(room_id: str, user_id: str) -> UserEventPayload:
+    return UserEventPayload(
+        user=User(id=user_id, name=f"User-{user_id}", accessibilityMode="standard"),
+        roomId=room_id,
+    )
+
 @app.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str = "anonymous"):
-    await manager.connect(websocket, room_id)
+async def websocket_endpoint(
+    websocket: WebSocket,
+    room_id: str,
+    user_id: str = Query(default="anonymous", alias="userId"),
+):
+    await manager.connect(websocket, room_id, user_id)
     
-    # Notify other users in the room that a new user has joined
     await manager.broadcast(
-        WebSocketMessage(
+        OutboundUserJoinedMessage(
             type="user_joined",
-            payload=UserEventPayload(
-                user=User(id=user_id, name=f"User-{user_id}", accessibilityMode="standard"),
-                roomId=room_id,
-            ).model_dump(),
-            timestamp=0, # Placeholder
+            payload=build_user_event_payload(room_id, user_id),
+            timestamp=now_ms(),
             userId=user_id,
-        ).model_dump_json(),
-        room_id
+        ),
+        room_id,
+        exclude=websocket,
     )
 
     try:
         while True:
             data = await websocket.receive_text()
             try:
-                message = WebSocketMessage.model_validate_json(data)
+                message = websocket_inbound_adapter.validate_json(data)
                 
-                # Update userId from connection if not present in message
-                if not message.userId:
-                    message.userId = user_id
+                message_user_id = message.userId or user_id
 
                 if message.type == "ping":
-                    await websocket.send_text(
-                        WebSocketMessage(type="pong", payload=None, timestamp=0, userId=user_id).model_dump_json()
+                    await manager.send_personal_message(
+                        OutboundPongMessage(
+                            type="pong",
+                            payload=None,
+                            timestamp=now_ms(),
+                            userId=message_user_id,
+                        ),
+                        websocket,
                     )
-                elif message.type == "user_joined":
-                    # User joined message already handled on connect
-                    pass
+                    continue
+                if message.type == "pong":
+                    continue
+
+                if message.type == "user_joined":
+                    outbound_message = OutboundUserJoinedMessage(
+                        type="user_joined",
+                        payload=build_user_event_payload(room_id, message_user_id),
+                        timestamp=message.timestamp,
+                        userId=message_user_id,
+                    )
+                elif message.type == "user_left":
+                    outbound_message = OutboundUserLeftMessage(
+                        type="user_left",
+                        payload=build_user_event_payload(room_id, message_user_id),
+                        timestamp=message.timestamp,
+                        userId=message_user_id,
+                    )
+                elif message.type == "transcript":
+                    inbound = message
+                    if not isinstance(inbound, InboundTranscriptMessage):
+                        raise TypeError("Expected transcript message variant")
+                    payload = TranscriptPayload(
+                        segment=inbound.payload.segment,
+                        roomId=room_id,
+                    )
+                    outbound_message = OutboundTranscriptMessage(
+                        type="transcript",
+                        payload=payload,
+                        timestamp=inbound.timestamp,
+                        userId=message_user_id,
+                    )
+                elif message.type == "sign_frame":
+                    inbound = message
+                    if not isinstance(inbound, InboundSignFrameMessage):
+                        raise TypeError("Expected sign_frame message variant")
+                    payload = SignFramePayload(
+                        result=inbound.payload.result,
+                        userId=message_user_id,
+                        roomId=room_id,
+                    )
+                    outbound_message = OutboundSignFrameMessage(
+                        type="sign_frame",
+                        payload=payload,
+                        timestamp=inbound.timestamp,
+                        userId=message_user_id,
+                    )
+                elif message.type == "audio_chunk":
+                    inbound = message
+                    if not isinstance(inbound, InboundAudioChunkMessage):
+                        raise TypeError("Expected audio_chunk message variant")
+                    payload = AudioChunkPayload(
+                        roomId=room_id,
+                        chunk=inbound.payload.chunk,
+                        format=inbound.payload.format,
+                        sampleRate=inbound.payload.sampleRate,
+                        sequence=inbound.payload.sequence,
+                    )
+                    outbound_message = OutboundAudioChunkMessage(
+                        type="audio_chunk",
+                        payload=payload,
+                        timestamp=inbound.timestamp,
+                        userId=message_user_id,
+                    )
+                elif message.type == "tts":
+                    inbound = message
+                    if not isinstance(inbound, InboundTTSMessage):
+                        raise TypeError("Expected tts message variant")
+                    payload = TTSPayload(
+                        roomId=room_id,
+                        text=inbound.payload.text,
+                        voice=inbound.payload.voice,
+                        speed=inbound.payload.speed,
+                    )
+                    outbound_message = OutboundTTSMessage(
+                        type="tts",
+                        payload=payload,
+                        timestamp=inbound.timestamp,
+                        userId=message_user_id,
+                    )
                 else:
-                    print(f"Received message type: {message.type} from user: {message.userId} in room: {room_id}")
-                    # Re-broadcast to all clients in the room
-                    await manager.broadcast(message.model_dump_json(), room_id)
+                    raise ValueError(f"Unsupported message type: {message.type}")
+
+                print(f"Received message type: {message.type} from user: {message_user_id} in room: {room_id}")
+                await manager.broadcast(outbound_message, room_id)
 
             except ValidationError as e:
                 print(f"WebSocket message validation error: {e}")
-                await websocket.send_text(
-                    WebSocketMessage(type="error", payload=f"Invalid message format: {e}", timestamp=0).model_dump_json()
+                await manager.send_personal_message(
+                    OutboundErrorMessage(
+                        type="error",
+                        payload=f"Invalid message format: {e}",
+                        timestamp=now_ms(),
+                        userId=user_id,
+                    ),
+                    websocket,
                 )
             except Exception as e:
                 print(f"WebSocket message processing error: {e}")
-                await websocket.send_text(
-                    WebSocketMessage(type="error", payload=f"Server error: {e}", timestamp=0).model_dump_json()
+                await manager.send_personal_message(
+                    OutboundErrorMessage(
+                        type="error",
+                        payload=f"Server error: {e}",
+                        timestamp=now_ms(),
+                        userId=user_id,
+                    ),
+                    websocket,
                 )
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
-        # Notify other users in the room that a user has left
         await manager.broadcast(
-            WebSocketMessage(
+            OutboundUserLeftMessage(
                 type="user_left",
-                payload=UserEventPayload(
-                    user=User(id=user_id, name=f"User-{user_id}", accessibilityMode="standard"),
-                    roomId=room_id,
-                ).model_dump(),
-                timestamp=0, # Placeholder
+                payload=build_user_event_payload(room_id, user_id),
+                timestamp=now_ms(),
                 userId=user_id,
-            ).model_dump_json(),
-            room_id
+            ),
+            room_id,
         )
 
 # Example HTTP endpoint (for testing or health check)
