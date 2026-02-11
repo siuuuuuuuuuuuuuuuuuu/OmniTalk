@@ -20,8 +20,29 @@ const MOCK_DETECTED: { id: string; text: string; timestamp: number }[] = [
   { id: '4', text: 'Can we schedule a follow-up meeting', timestamp: Date.now() - 3000 },
 ];
 
+// ─── Font size helper ────────────────────────────────────────────────────────
+function getAccessibleFontSize(fontSize: string): number {
+  switch (fontSize) {
+    case 'small': return 13;
+    case 'medium': return 15;
+    case 'large': return 19;
+    case 'extra-large': return 25;
+    default: return 15;
+  }
+}
+
 // ─── Detected Text Item ──────────────────────────────────────────────────────
-function DetectedItem({ item, isLatest }: { item: typeof MOCK_DETECTED[0]; isLatest: boolean }) {
+function DetectedItem({
+  item,
+  isLatest,
+  highContrast,
+  fontSize,
+}: {
+  item: typeof MOCK_DETECTED[0];
+  isLatest: boolean;
+  highContrast: boolean;
+  fontSize: number;
+}) {
   const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const fadeAnim = useRef(new Animated.Value(isLatest ? 0 : 1)).current;
   const slideAnim = useRef(new Animated.Value(isLatest ? 10 : 0)).current;
@@ -40,13 +61,24 @@ function DetectedItem({ item, isLatest }: { item: typeof MOCK_DETECTED[0]; isLat
       style={[
         styles.detectedItem,
         isLatest && styles.detectedItemLatest,
+        highContrast && styles.detectedItemHighContrast,
         { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
       ]}
     >
       <View style={styles.detectedDot} />
       <View style={styles.detectedContent}>
-        <ThemedText style={styles.detectedText}>{item.text}</ThemedText>
-        <ThemedText style={styles.detectedTime}>{time}</ThemedText>
+        <ThemedText
+          style={[
+            styles.detectedText,
+            { fontSize, lineHeight: fontSize * 1.47 },
+            highContrast && styles.highContrastText,
+          ]}
+        >
+          {item.text}
+        </ThemedText>
+        <ThemedText style={[styles.detectedTime, highContrast && styles.highContrastMuted]}>
+          {time}
+        </ThemedText>
       </View>
     </Animated.View>
   );
@@ -132,11 +164,13 @@ export default function SignLanguageScreen() {
     );
   }
 
+  const accessibleFontSize = getAccessibleFontSize(settings.fontSize);
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, settings.highContrast && styles.safeAreaHighContrast]}>
+      <View style={[styles.container, settings.highContrast && styles.containerHighContrast]}>
         {/* ── Header ── */}
-        <View style={styles.header}>
+        <View style={[styles.header, settings.highContrast && styles.headerHighContrast]}>
           <View>
             <ThemedText style={styles.headerTitle}>Sign Language</ThemedText>
             <ThemedText style={styles.headerSub}>Front camera active</ThemedText>
@@ -231,6 +265,8 @@ export default function SignLanguageScreen() {
                   key={item.id}
                   item={item}
                   isLatest={index === detectedSigns.length - 1}
+                  highContrast={settings.highContrast}
+                  fontSize={accessibleFontSize}
                 />
               ))
             )}
@@ -270,7 +306,9 @@ export default function SignLanguageScreen() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  safeAreaHighContrast: { backgroundColor: '#000000' },
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+  containerHighContrast: { backgroundColor: '#000000' },
 
   // Header
   header: {
@@ -284,6 +322,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
+  headerHighContrast: { backgroundColor: '#111111', borderBottomColor: '#333333' },
   headerTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A', letterSpacing: 0.3 },
   headerSub: { fontSize: 13, color: '#94A3B8', marginTop: 2, fontWeight: '500' },
 
@@ -490,6 +529,16 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontWeight: '500',
     marginTop: 4,
+  },
+  detectedItemHighContrast: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#333333',
+  },
+  highContrastText: {
+    color: '#FFFFFF',
+  },
+  highContrastMuted: {
+    color: '#AAAAAA',
   },
 
   emptyState: {

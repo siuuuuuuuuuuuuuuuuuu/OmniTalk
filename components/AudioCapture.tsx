@@ -1,10 +1,12 @@
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { useAccessibility } from "@/state/AppContext";
 
 /** Convert a base64 string to an ArrayBuffer (works on all platforms) */
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -46,6 +48,7 @@ export function AudioCapture({
   autoStart = false,
   hideUI = false,
 }: AudioCaptureProps) {
+  const { settings } = useAccessibility();
   const [isRecording, setIsRecording] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -444,12 +447,15 @@ export function AudioCapture({
   }, [stopRecordingWeb, stopRecordingNative]);
 
   const toggleRecording = useCallback(async () => {
+    if (settings.hapticFeedback && Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
     if (isRecording) {
       await stopRecording();
     } else {
       await startRecording();
     }
-  }, [isRecording, startRecording, stopRecording]);
+  }, [isRecording, startRecording, stopRecording, settings.hapticFeedback]);
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);

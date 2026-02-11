@@ -272,13 +272,28 @@ function SoundRadar({
   );
 }
 
+// ─── Font size helper ────────────────────────────────────────────────────────
+function getAccessibleFontSize(fontSize: string): number {
+  switch (fontSize) {
+    case "small": return 14;
+    case "medium": return 16;
+    case "large": return 20;
+    case "extra-large": return 26;
+    default: return 16;
+  }
+}
+
 // ─── Caption Bubble ─────────────────────────────────────────────────────────
 function CaptionBubble({
   item,
   isLatest,
+  highContrast,
+  fontSize,
 }: {
   item: Caption;
   isLatest: boolean;
+  highContrast: boolean;
+  fontSize: number;
 }) {
   const color = SPEAKER_COLORS[item.speakerIndex % SPEAKER_COLORS.length];
   const time = new Date(item.timestamp).toLocaleTimeString([], {
@@ -312,6 +327,7 @@ function CaptionBubble({
       style={[
         styles.bubble,
         isLatest && styles.bubbleLatest,
+        highContrast && styles.bubbleHighContrast,
         { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
       ]}
     >
@@ -321,9 +337,19 @@ function CaptionBubble({
           <ThemedText style={[styles.bubbleSpeaker, { color }]}>
             {item.speaker}
           </ThemedText>
-          <ThemedText style={styles.bubbleTime}>{time}</ThemedText>
+          <ThemedText style={[styles.bubbleTime, highContrast && styles.highContrastMuted]}>
+            {time}
+          </ThemedText>
         </View>
-        <ThemedText style={styles.bubbleText}>{item.text}</ThemedText>
+        <ThemedText
+          style={[
+            styles.bubbleText,
+            { fontSize, lineHeight: fontSize * 1.5 },
+            highContrast && styles.highContrastText,
+          ]}
+        >
+          {item.text}
+        </ThemedText>
       </View>
     </Animated.View>
   );
@@ -736,9 +762,11 @@ export default function CaptionsScreen() {
     );
   }
 
+  const accessibleFontSize = getAccessibleFontSize(settings.fontSize);
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, settings.highContrast && styles.safeAreaHighContrast]}>
+      <View style={[styles.container, settings.highContrast && styles.containerHighContrast]}>
         {/* ── Header ── */}
         <View style={styles.header}>
           <View>
@@ -783,6 +811,8 @@ export default function CaptionsScreen() {
                 key={item.id}
                 item={item}
                 isLatest={index === captions.length - 1}
+                highContrast={settings.highContrast}
+                fontSize={accessibleFontSize}
               />
             ))}
           </ScrollView>
@@ -846,7 +876,9 @@ export default function CaptionsScreen() {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#FFFFFF" },
+  safeAreaHighContrast: { backgroundColor: "#000000" },
   container: { flex: 1, backgroundColor: "#F8FAFC" },
+  containerHighContrast: { backgroundColor: "#000000" },
 
   // Header
   header: {
@@ -1229,6 +1261,16 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: "#1E293B",
     fontWeight: "400",
+  },
+  bubbleHighContrast: {
+    backgroundColor: "#1A1A1A",
+    borderColor: "#333333",
+  },
+  highContrastText: {
+    color: "#FFFFFF",
+  },
+  highContrastMuted: {
+    color: "#AAAAAA",
   },
 
   // Record FAB
