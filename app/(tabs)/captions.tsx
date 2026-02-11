@@ -5,10 +5,12 @@ import {
   SpeechToTextService,
   TranscriptionResult,
 } from "@/services/speechToText";
+import { Audio } from "expo-av";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -348,13 +350,30 @@ export default function CaptionsScreen() {
   // Microphone permission state
   const [micPermission, setMicPermission] = useState<boolean | null>(null);
 
-  // Request microphone permission on mount
+  // Request microphone permission on mount (platform-aware)
   useEffect(() => {
     (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop());
-        setMicPermission(true);
+        if (Platform.OS === "web") {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          stream.getTracks().forEach((t) => t.stop());
+          setMicPermission(true);
+        } else {
+          // iOS / Android: use expo-av
+          const { status } = await Audio.requestPermissionsAsync();
+          if (status === "granted") {
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: true,
+              playsInSilentModeIOS: true,
+              staysActiveInBackground: true,
+            });
+            setMicPermission(true);
+          } else {
+            setMicPermission(false);
+          }
+        }
       } catch {
         setMicPermission(false);
       }
@@ -363,9 +382,25 @@ export default function CaptionsScreen() {
 
   const requestMicPermission = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
-      setMicPermission(true);
+      if (Platform.OS === "web") {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        stream.getTracks().forEach((t) => t.stop());
+        setMicPermission(true);
+      } else {
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status === "granted") {
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+          });
+          setMicPermission(true);
+        } else {
+          setMicPermission(false);
+        }
+      }
     } catch {
       setMicPermission(false);
     }

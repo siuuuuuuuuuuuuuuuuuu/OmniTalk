@@ -1,9 +1,20 @@
 import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system/legacy";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+
+/** Convert a base64 string to an ArrayBuffer (works on all platforms) */
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 export interface AudioCaptureProps {
   /** Called with audio data - for batch processing after recording stops */
@@ -45,6 +56,11 @@ export function AudioCapture({
     null,
   );
 
+  // Refs for native chunk polling (read growing WAV file in real-time)
+  const chunkPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastReadPositionRef = useRef(0);
+  const isReadingChunkRef = useRef(false);
+
   // Refs for Web Audio API (web real-time streaming)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -81,6 +97,9 @@ export function AudioCapture({
     stopRecording();
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
+    }
+    if (chunkPollingRef.current) {
+      clearInterval(chunkPollingRef.current);
     }
     if (audioContextRef.current) {
       audioContextRef.current.close();
@@ -254,7 +273,8 @@ export function AudioCapture({
   }, [onRecordingStop, onRecordingStatusChange, onError]);
 
   // ==========================================
-  // Native: expo-av recording (batch mode)
+  // Native: expo-av recording with real-time chunk streaming
+  // Records to a WAV file and polls it to extract new PCM data
   // ==========================================
   const startRecordingNative = useCallback(async () => {
     if (!hasPermission) {
@@ -298,15 +318,88 @@ export function AudioCapture({
       durationIntervalRef.current = setInterval(() => {
         setRecordingDuration((prev) => prev + 1);
       }, 1000);
+
+      // ── Real-time chunk polling ──
+      // WAV header is 44 bytes; raw Int16 PCM data starts at byte 44.
+      // Poll the growing file every chunkInterval ms and send new bytes.
+      lastReadPositionRef.current = 44; // skip WAV header
+      isReadingChunkRef.current = false;
+
+      chunkPollingRef.current = setInterval(async () => {
+        if (isReadingChunkRef.current) return; // prevent overlapping reads
+        isReadingChunkRef.current = true;
+        try {
+          const uri = recordingRef.current?.getURI();
+          if (!uri) return;
+
+          const fileInfo = await FileSystem.getInfoAsync(uri);
+          if (!fileInfo.exists || !fileInfo.size || fileInfo.size <= 44) return;
+
+          const bytesToRead = fileInfo.size - lastReadPositionRef.current;
+          if (bytesToRead <= 0) return;
+
+          const base64Data = await FileSystem.readAsStringAsync(uri, {
+            encoding: "base64",
+            position: lastReadPositionRef.current,
+            length: bytesToRead,
+          });
+
+          if (base64Data) {
+            onAudioChunkRef.current?.(base64ToArrayBuffer(base64Data));
+            lastReadPositionRef.current = fileInfo.size;
+          }
+        } catch {
+          // Ignore read errors during active recording
+        } finally {
+          isReadingChunkRef.current = false;
+        }
+      }, chunkInterval);
     } catch (error) {
       onError?.(error as Error);
     }
-  }, [hasPermission, onError, onRecordingStart, onRecordingStatusChange]);
+  }, [
+    hasPermission,
+    onError,
+    onRecordingStart,
+    onRecordingStatusChange,
+    chunkInterval,
+  ]);
 
   const stopRecordingNative = useCallback(async () => {
     if (!recordingRef.current) return;
 
     try {
+      // Stop chunk polling first
+      if (chunkPollingRef.current) {
+        clearInterval(chunkPollingRef.current);
+        chunkPollingRef.current = null;
+      }
+
+      // One final read to capture any remaining audio before stopping
+      try {
+        const uri = recordingRef.current.getURI();
+        if (uri) {
+          const fileInfo = await FileSystem.getInfoAsync(uri);
+          if (
+            fileInfo.exists &&
+            fileInfo.size &&
+            fileInfo.size > lastReadPositionRef.current
+          ) {
+            const bytesToRead = fileInfo.size - lastReadPositionRef.current;
+            const base64Data = await FileSystem.readAsStringAsync(uri, {
+              encoding: "base64",
+              position: lastReadPositionRef.current,
+              length: bytesToRead,
+            });
+            if (base64Data) {
+              onAudioChunkRef.current?.(base64ToArrayBuffer(base64Data));
+            }
+          }
+        }
+      } catch {
+        // Ignore final-read errors
+      }
+
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current);
         durationIntervalRef.current = null;
