@@ -241,14 +241,6 @@ export default function SignLanguageScreen() {
             </ThemedText>
           </View>
 
-          {/* TTS status bar when active */}
-          {settings.ttsEnabled && tts.isSpeaking && (
-            <View style={styles.ttsStatusBar}>
-              <ThemedText style={styles.ttsStatusIcon}>{'\uD83D\uDD0A'}</ThemedText>
-              <ThemedText style={styles.ttsStatusText}>Reading detected signs aloud...</ThemedText>
-            </View>
-          )}
-
           <ScrollView
             style={styles.transcriptScroll}
             contentContainerStyle={styles.transcriptList}
@@ -298,18 +290,17 @@ export default function SignLanguageScreen() {
             >
               <ThemedText style={styles.clearBtnText}>Clear</ThemedText>
             </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.settingsBtn, pressed && styles.settingsBtnPressed]}
+              onPress={() => setShowSettings(!showSettings)}
+              accessibilityLabel={showSettings ? "Close settings" : "Open accessibility settings"}
+              accessibilityRole="button"
+            >
+              <ThemedText style={styles.settingsBtnIcon}>⚙</ThemedText>
+            </Pressable>
           </View>
         </View>
-
-        {/* ── Settings FAB ── */}
-        <Pressable
-          style={styles.settingsFab}
-          onPress={() => setShowSettings(!showSettings)}
-          accessibilityLabel={showSettings ? "Close settings" : "Open accessibility settings"}
-          accessibilityRole="button"
-        >
-          <ThemedText style={styles.settingsFabIcon}>⚙</ThemedText>
-        </Pressable>
 
         {/* ── Accessibility Settings Modal ── */}
         {showSettings && (
@@ -511,24 +502,6 @@ const styles = StyleSheet.create({
   transcriptTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   transcriptCount: { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
 
-  // TTS status bar
-  ttsStatusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    backgroundColor: '#EFF6FF',
-    gap: 8,
-  },
-  ttsStatusIcon: {
-    fontSize: 14,
-  },
-  ttsStatusText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#3B82F6',
-  },
-
   transcriptScroll: { flex: 1 },
   transcriptList: {
     paddingHorizontal: 20,
@@ -615,7 +588,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#E2E8F0',
   },
   speakBtn: {
-    flex: 1,
+    flex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -631,7 +604,7 @@ const styles = StyleSheet.create({
   speakBtnTextActive: { color: '#FFFFFF' },
 
   clearBtn: {
-    paddingHorizontal: 20,
+    flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
     backgroundColor: '#F1F5F9',
@@ -640,6 +613,17 @@ const styles = StyleSheet.create({
   },
   clearBtnPressed: { backgroundColor: '#E2E8F0' },
   clearBtnText: { fontSize: 15, fontWeight: '600', color: '#64748B' },
+
+  settingsBtn: {
+    width: 48,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#64748B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsBtnPressed: { backgroundColor: '#475569' },
+  settingsBtnIcon: { fontSize: 20, color: '#FFFFFF' },
 
   // Permission
   permissionContainer: {
@@ -683,27 +667,7 @@ const styles = StyleSheet.create({
   permissionButtonPressed: { opacity: 0.9 },
   permissionButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
-  // Settings FAB & Modal
-  settingsFab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#64748B',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  settingsFabIcon: {
-    fontSize: 22,
-    color: '#FFFFFF',
-  },
+  // Settings Modal
   settingsModal: {
     position: 'absolute',
     top: 0,

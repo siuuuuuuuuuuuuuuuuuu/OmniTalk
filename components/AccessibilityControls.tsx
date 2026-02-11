@@ -67,13 +67,13 @@ const PRESETS: AccessibilityPreset[] = [
     id: "blind",
     label: "Blind",
     icon: "🔊",
-    description: "TTS on, haptic feedback, captions off",
+    description: "Haptic feedback enabled",
     settings: {
       fontSize: "medium",
       highContrast: false,
       captionsEnabled: false,
-      ttsEnabled: true,
-      ttsSpeed: 1.2,
+      ttsEnabled: false,
+      ttsSpeed: 1.0,
       signLanguageEnabled: false,
       hapticFeedback: true,
     },
@@ -280,178 +280,6 @@ export function AccessibilityControls({
         </View>
       </SettingsSection>
 
-      {/* Captions Settings */}
-      <SettingsSection
-        title="Captions"
-        icon="💬"
-        isExpanded={expandedSection === "captions"}
-        onToggle={() => toggleSection("captions")}
-      >
-        {/* Enable Captions */}
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <ThemedText style={styles.settingLabel}>Show Captions</ThemedText>
-            <ThemedText style={styles.settingDescription}>
-              Display real-time text transcription
-            </ThemedText>
-          </View>
-          <Switch
-            value={settings.captionsEnabled}
-            onValueChange={(value) =>
-              handleSettingsChange({ captionsEnabled: value })
-            }
-            trackColor={{ false: "#767577", true: "#4A90D9" }}
-            thumbColor={settings.captionsEnabled ? "#FFFFFF" : "#f4f3f4"}
-            accessibilityLabel="Toggle captions"
-          />
-        </View>
-
-        {/* Caption info */}
-        {settings.captionsEnabled && (
-          <View style={styles.infoBox}>
-            <ThemedText style={styles.infoBoxIcon}>ℹ️</ThemedText>
-            <ThemedText style={styles.infoBoxText}>
-              Captions will appear in real-time as speech is detected. Font size
-              and contrast settings above also apply to captions.
-            </ThemedText>
-          </View>
-        )}
-      </SettingsSection>
-
-      {/* Text-to-Speech Settings */}
-      <SettingsSection
-        title="Text-to-Speech"
-        icon="🔊"
-        isExpanded={expandedSection === "tts"}
-        onToggle={() => toggleSection("tts")}
-      >
-        {/* Enable TTS */}
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <ThemedText style={styles.settingLabel}>Enable TTS</ThemedText>
-            <ThemedText style={styles.settingDescription}>
-              Read transcribed text aloud for blind users
-            </ThemedText>
-          </View>
-          <Switch
-            value={settings.ttsEnabled}
-            onValueChange={(value) =>
-              handleSettingsChange({ ttsEnabled: value })
-            }
-            trackColor={{ false: "#767577", true: "#4A90D9" }}
-            thumbColor={settings.ttsEnabled ? "#FFFFFF" : "#f4f3f4"}
-            accessibilityLabel="Toggle text-to-speech"
-          />
-        </View>
-
-        {/* TTS Speed */}
-        {settings.ttsEnabled && (
-          <>
-            <View style={styles.sliderRow}>
-              <View style={styles.sliderHeader}>
-                <ThemedText style={styles.settingLabel}>Speed</ThemedText>
-                <View style={styles.sliderValueBadge}>
-                  <ThemedText style={styles.sliderValueText}>
-                    {settings.ttsSpeed.toFixed(1)}x
-                  </ThemedText>
-                </View>
-              </View>
-              <Slider
-                style={styles.slider}
-                minimumValue={0.5}
-                maximumValue={2.0}
-                step={0.1}
-                value={settings.ttsSpeed}
-                onValueChange={(value) =>
-                  handleSettingsChange({ ttsSpeed: value })
-                }
-                minimumTrackTintColor="#4A90D9"
-                maximumTrackTintColor="rgba(128, 128, 128, 0.3)"
-                thumbTintColor="#4A90D9"
-                accessibilityLabel={`TTS speed ${settings.ttsSpeed}`}
-              />
-              <View style={styles.sliderLabels}>
-                <ThemedText style={styles.sliderLabel}>0.5x Slow</ThemedText>
-                <ThemedText style={styles.sliderLabel}>1.0x Normal</ThemedText>
-                <ThemedText style={styles.sliderLabel}>2.0x Fast</ThemedText>
-              </View>
-            </View>
-
-            {/* Speed preset buttons */}
-            <View style={styles.speedPresets}>
-              {[0.75, 1.0, 1.25, 1.5].map((speed) => (
-                <Pressable
-                  key={speed}
-                  style={[
-                    styles.speedPresetButton,
-                    Math.abs(settings.ttsSpeed - speed) < 0.05 &&
-                      styles.speedPresetButtonActive,
-                  ]}
-                  onPress={() => handleSettingsChange({ ttsSpeed: speed })}
-                  accessibilityLabel={`Set speed to ${speed}x`}
-                  accessibilityRole="button"
-                >
-                  <ThemedText
-                    style={[
-                      styles.speedPresetText,
-                      Math.abs(settings.ttsSpeed - speed) < 0.05 &&
-                        styles.speedPresetTextActive,
-                    ]}
-                  >
-                    {speed}x
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-
-            {/* TTS Info */}
-            <View style={styles.infoBox}>
-              <ThemedText style={styles.infoBoxIcon}>💡</ThemedText>
-              <ThemedText style={styles.infoBoxText}>
-                Use the voice picker in the TTS player to select different
-                voices. Slower speeds are recommended for complex content.
-              </ThemedText>
-            </View>
-          </>
-        )}
-      </SettingsSection>
-
-      {/* Sign Language Settings */}
-      <SettingsSection
-        title="Sign Language"
-        icon="🤟"
-        isExpanded={expandedSection === "sign"}
-        onToggle={() => toggleSection("sign")}
-      >
-        {/* Enable Sign Language */}
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <ThemedText style={styles.settingLabel}>Sign Detection</ThemedText>
-            <ThemedText style={styles.settingDescription}>
-              Enable camera for sign language input
-            </ThemedText>
-          </View>
-          <Switch
-            value={settings.signLanguageEnabled}
-            onValueChange={(value) =>
-              handleSettingsChange({ signLanguageEnabled: value })
-            }
-            trackColor={{ false: "#767577", true: "#4A90D9" }}
-            thumbColor={settings.signLanguageEnabled ? "#FFFFFF" : "#f4f3f4"}
-            accessibilityLabel="Toggle sign language detection"
-          />
-        </View>
-
-        {settings.signLanguageEnabled && (
-          <View style={styles.infoBox}>
-            <ThemedText style={styles.infoBoxIcon}>📷</ThemedText>
-            <ThemedText style={styles.infoBoxText}>
-              Camera access is required. Position your hands clearly in frame
-              for best recognition accuracy.
-            </ThemedText>
-          </View>
-        )}
-      </SettingsSection>
 
       {/* Feedback Settings */}
       <SettingsSection
@@ -495,18 +323,6 @@ export function AccessibilityControls({
           />
           {settings.highContrast && (
             <SettingTag label="High Contrast" active={true} />
-          )}
-          {settings.captionsEnabled && (
-            <SettingTag label="Captions" active={true} />
-          )}
-          {settings.ttsEnabled && (
-            <SettingTag
-              label={`TTS ${settings.ttsSpeed}x`}
-              active={true}
-            />
-          )}
-          {settings.signLanguageEnabled && (
-            <SettingTag label="Sign Language" active={true} />
           )}
           {settings.hapticFeedback && (
             <SettingTag label="Haptics" active={false} />
