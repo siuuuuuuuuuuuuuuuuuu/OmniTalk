@@ -575,6 +575,11 @@ async def sign_video_websocket(websocket: WebSocket):
             except json.JSONDecodeError:
                 # Ignore malformed text frames and keep connection alive.
                 continue
+            except Exception as e:
+                logger.exception("Error processing sign frame: %s", e)
+                await websocket.send_json(
+                    {"type": "error", "error": str(e)}
+                )
     except WebSocketDisconnect:
         logger.info("Sign language video WebSocket disconnected")
 

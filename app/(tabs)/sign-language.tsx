@@ -12,14 +12,14 @@ import { AccessibilityControls } from '@/components/AccessibilityControls';
 import { ThemedText } from '@/components/themed-text';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useAccessibility } from '@/state/AppContext';
+import { SIGN_VIDEO_WS_URL } from '@/constants/api';
 
-// ─── Mock detected signs (static demo data) ─────────────────────────────────
-const MOCK_DETECTED: { id: string; text: string; timestamp: number }[] = [
-  { id: '1', text: 'Hello everyone', timestamp: Date.now() - 15000 },
-  { id: '2', text: 'Thank you for having me', timestamp: Date.now() - 11000 },
-  { id: '3', text: 'I have a question about the project timeline', timestamp: Date.now() - 7000 },
-  { id: '4', text: 'Can we schedule a follow-up meeting', timestamp: Date.now() - 3000 },
-];
+// ─── Types ───────────────────────────────────────────────────────────────────
+type DetectedSign = { id: string; text: string; gesture: string; confidence: number; timestamp: number };
+
+// Frame capture settings
+const FRAME_INTERVAL_MS = 500; // Send a frame every 500ms (2 FPS) to avoid overwhelming the backend
+const FRAME_QUALITY = 0.4; // JPEG quality (lower = smaller payload = faster)
 
 // ─── Font size helper ────────────────────────────────────────────────────────
 function getAccessibleFontSize(fontSize: string): number {
@@ -39,7 +39,7 @@ function DetectedItem({
   highContrast,
   fontSize,
 }: {
-  item: typeof MOCK_DETECTED[0];
+  item: DetectedSign;
   isLatest: boolean;
   highContrast: boolean;
   fontSize: number;
@@ -90,8 +90,14 @@ export default function SignLanguageScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
   const [isDetecting, setIsDetecting] = useState(false);
-  const [detectedSigns] = useState(MOCK_DETECTED);
+  const [detectedSigns, setDetectedSigns] = useState<DetectedSign[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const cameraRef = useRef<CameraView>(null);
+
+  // WebSocket ref for /sign/video
+  const wsRef = useRef<WebSocket | null>(null);
+  const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const signIdRef = useRef(0);
 
   const { settings, updateSettings } = useAccessibility();
   const tts = useTextToSpeech({ autoSpeak: false });
@@ -99,9 +105,127 @@ export default function SignLanguageScreen() {
 
   const fullText = detectedSigns.map(d => d.text).join('. ');
 
-  const toggleDetection = useCallback(() => {
-    setIsDetecting(prev => !prev);
+  // ── Connect / disconnect WebSocket to backend /sign/video ──
+  const connectWs = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    setConnectionStatus('connecting');
+    const ws = new WebSocket(`${SIGN_VIDEO_WS_URL}/video`);
+
+    ws.onopen = () => {
+      console.log('Sign WS: connected');
+      setConnectionStatus('connected');
+      ws.send(JSON.stringify({ type: 'init', clientId: 'mobile-client', language: 'ASL' }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        console.log('Sign WS received:', msg.type, msg.gesture, msg.confidence);
+        if (msg.type === 'gesture' && msg.gesture && msg.gesture !== 'none') {
+          const newSign: DetectedSign = {
+            id: `sign-${signIdRef.current++}`,
+            text: msg.text || msg.gesture,
+            gesture: msg.gesture,
+            confidence: msg.confidence ?? 0,
+            timestamp: Date.now(),
+          };
+          // Only add if confidence is above threshold and text is meaningful
+          if (newSign.confidence >= 0.5 && newSign.text && newSign.text !== '...') {
+            setDetectedSigns((prev: DetectedSign[]) => [...prev.slice(-49), newSign]);
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.log('Sign WS error:', e);
+      setConnectionStatus('error');
+    };
+    ws.onclose = (e) => {
+      console.log('Sign WS closed:', e.code, e.reason);
+      setConnectionStatus('idle');
+      wsRef.current = null;
+    };
+
+    wsRef.current = ws;
   }, []);
+
+  const disconnectWs = useCallback(() => {
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
+    }
+    wsRef.current?.close();
+    wsRef.current = null;
+  }, []);
+
+  // ── Frame capture loop ──
+  const startFrameCapture = useCallback(() => {
+    if (frameIntervalRef.current) return;
+
+    frameIntervalRef.current = setInterval(() => {
+      if (!cameraRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+      const ws = wsRef.current;
+      cameraRef.current.takePictureAsync({
+        quality: FRAME_QUALITY,
+        base64: true,
+        skipProcessing: true,
+      }).then((photo: any) => {
+        if (photo?.base64 && ws.readyState === WebSocket.OPEN) {
+          console.log('Sign: sending frame, base64 length:', photo.base64.length);
+          ws.send(JSON.stringify({
+            type: 'frame',
+            clientId: 'mobile-client',
+            frameId: `f_${Date.now()}`,
+            data: photo.base64,
+            language: 'ASL',
+          }));
+        } else {
+          console.log('Sign: takePictureAsync returned', photo ? 'no base64' : 'null');
+        }
+      }).catch((err: any) => {
+        console.log('Sign: frame capture error:', err?.message || err);
+      });
+    }, FRAME_INTERVAL_MS);
+  }, []);
+
+  const stopFrameCapture = useCallback(() => {
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
+    }
+  }, []);
+
+  // ── Toggle detection: connect → start capturing, or stop → disconnect ──
+  const toggleDetection = useCallback(() => {
+    if (isDetecting) {
+      stopFrameCapture();
+      disconnectWs();
+      setIsDetecting(false);
+    } else {
+      connectWs();
+      setIsDetecting(true);
+    }
+  }, [isDetecting, connectWs, disconnectWs, stopFrameCapture]);
+
+  // Start frame capture once WebSocket is connected
+  useEffect(() => {
+    if (isDetecting && connectionStatus === 'connected') {
+      startFrameCapture();
+    }
+  }, [isDetecting, connectionStatus, startFrameCapture]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopFrameCapture();
+      disconnectWs();
+    };
+  }, [stopFrameCapture, disconnectWs]);
 
   const toggleFacing = useCallback(() => {
     setFacing(current => (current === 'back' ? 'front' : 'back'));
@@ -120,6 +244,7 @@ export default function SignLanguageScreen() {
 
   const clearText = useCallback(() => {
     tts.stop();
+    setDetectedSigns([]);
   }, [tts]);
 
   // Auto-read new detections when TTS is enabled
@@ -175,7 +300,12 @@ export default function SignLanguageScreen() {
         <View style={[styles.header, settings.highContrast && styles.headerHighContrast]}>
           <View>
             <ThemedText style={styles.headerTitle}>Sign Language</ThemedText>
-            <ThemedText style={styles.headerSub}>Front camera active</ThemedText>
+            <ThemedText style={styles.headerSub}>
+              {connectionStatus === 'connected' ? 'Connected to backend' :
+               connectionStatus === 'connecting' ? 'Connecting...' :
+               connectionStatus === 'error' ? 'Connection failed' :
+               'Ready to detect'}
+            </ThemedText>
           </View>
           <View style={[styles.statusBadge, isDetecting ? styles.statusBadgeActive : styles.statusBadgeIdle]}>
             <View style={[styles.statusDot, isDetecting ? styles.statusDotActive : styles.statusDotIdle]} />
